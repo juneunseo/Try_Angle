@@ -1,23 +1,23 @@
 package com.example.camera2app.gallery
 
-import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import com.bumptech.glide.Glide
-import com.example.camera2app.databinding.ActivityPreviewBinding
+import com.example.camera2app.databinding.ActivityPreviewFeedbackTotalBinding
 
-class PreviewActivity : ComponentActivity() {
+class FeedbackActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_IMAGE_URI = "extra_image_uri"
     }
 
-    private lateinit var binding: ActivityPreviewBinding
+    private lateinit var binding: ActivityPreviewFeedbackTotalBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityPreviewBinding.inflate(layoutInflater)
+
+        binding = ActivityPreviewFeedbackTotalBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         val uriStr = intent.getStringExtra(EXTRA_IMAGE_URI)
@@ -26,19 +26,12 @@ class PreviewActivity : ComponentActivity() {
         if (uri != null) {
             Glide.with(this)
                 .load(uri)
-                .into(binding.imageFull)
+                .into(binding.imageFull)   // ← XML에 있는 ID 사용!
         }
 
-        // 🔙 뒤로가기 버튼
+        // 뒤로가기
         binding.btnBack.setOnClickListener {
             onBackPressedDispatcher.onBackPressed()
-        }
-
-        // ⭐ 상단 오른쪽 버튼 → FeedbackActivity 이동
-        binding.btnInfo.setOnClickListener {
-            val intent = Intent(this, FeedbackActivity::class.java)
-            intent.putExtra(FeedbackActivity.EXTRA_IMAGE_URI, uriStr)
-            startActivity(intent)
         }
     }
 }

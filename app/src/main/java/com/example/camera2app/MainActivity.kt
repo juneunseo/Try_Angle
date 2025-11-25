@@ -177,7 +177,8 @@ class MainActivity : AppCompatActivity() {
         // 가로 SeekBar 하나 만들어서 회전해서 세로처럼 쓰기
         val seek = SeekBar(this).apply {
             max = 800          // 기존 EV 오버레이와 같은 범위: p=400 → EV 0.0
-            rotation = -90f    // 세로로 보이게
+            rotation = -90f    // 세로로 보이게git remote -v
+
             progress = 400     // 시작값: EV 0.0
 
             // ★ EV 슬라이더 thumb 아이콘 추가

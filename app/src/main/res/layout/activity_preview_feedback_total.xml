@@ -1,0 +1,410 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:background="#FFFFFF"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Scroll area -->
+    <ScrollView
+        android:id="@+id/scrollViewRoot"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:gravity="center_horizontal"
+        android:background="#EBEBEB">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center_horizontal">
+
+            <!-- Top bar -->
+            <LinearLayout
+                android:id="@+id/topBar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="64dp"
+                android:layout_marginBottom="30dp"
+                android:layout_marginHorizontal="20dp"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/btnBack"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:src="@mipmap/ic_launcher"
+                    android:scaleType="fitXY"/>
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"/>
+
+                <TextView
+                    android:id="@+id/titleText"
+                    android:textColor="#000000"
+                    android:textSize="24sp"
+                    android:layout_height="wrap_content"
+                    android:layout_width="wrap_content"
+                    android:text="피드백"/>
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"/>
+
+                <ImageView
+                    android:id="@+id/btnInfo"
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:src="@mipmap/ic_launcher"
+                    android:scaleType="fitXY"/>
+            </LinearLayout>
+
+            <!-- Thumbnail -->
+            <ImageView
+                android:id="@+id/imageFull"
+                android:layout_width="123dp"
+                android:layout_height="123dp"
+                android:layout_marginBottom="7dp"
+                android:src="@mipmap/ic_launcher"
+                android:scaleType="fitXY"/>
+
+            <!-- Description box -->
+            <LinearLayout
+                android:id="@+id/descBox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                android:background="@drawable/rounded_grey_solid_bg"
+                android:paddingVertical="23dp"
+                android:paddingHorizontal="99dp"
+                android:layout_marginBottom="22dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/photoName"
+                    android:textColor="#000000"
+                    android:textSize="18sp"
+                    android:layout_marginBottom="15dp"
+                    android:layout_height="wrap_content"
+                    android:layout_width="wrap_content"
+                    android:text="사진 이름"/>
+
+                <TextView
+                    android:id="@+id/photoSubtitle"
+                    android:textColor="#363636"
+                    android:textSize="16sp"
+                    android:layout_height="wrap_content"
+                    android:layout_width="wrap_content"
+                    android:text="한줄 설명"/>
+            </LinearLayout>
+
+            <!-- Feedback category section -->
+            <LinearLayout
+                android:id="@+id/feedbackCategorySection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingVertical="13dp"
+                android:layout_marginBottom="14dp"
+                android:layout_marginHorizontal="18dp"
+                android:orientation="vertical">
+
+                <!-- Row 1 -->
+                <LinearLayout
+                    android:id="@+id/categoryRow1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="3dp"
+                    android:orientation="horizontal">
+
+                    <!-- Pose -->
+                    <LinearLayout
+                        android:id="@+id/categoryPose"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center_horizontal"
+                        android:background="@drawable/rounded_grey_stroke_bg"
+                        android:padding="10dp"
+                        android:layout_marginEnd="4dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/categoryPoseTitle"
+                            android:textColor="#000000"
+                            android:textSize="18sp"
+                            android:layout_marginBottom="15dp"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:text="🤸‍♂️ 포즈"/>
+
+                        <TextView
+                            android:id="@+id/categoryPoseDesc"
+                            android:textColor="#363636"
+                            android:textSize="16sp"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:text="한줄 설명"/>
+                    </LinearLayout>
+
+                    <!-- Composition -->
+                    <LinearLayout
+                        android:id="@+id/categoryComposition"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center_horizontal"
+                        android:background="@drawable/rounded_grey_stroke_bg"
+                        android:padding="10dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/categoryCompositionTitle"
+                            android:textColor="#000000"
+                            android:textSize="18sp"
+                            android:layout_marginBottom="15dp"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:text="📸 구도"/>
+
+                        <TextView
+                            android:id="@+id/categoryCompositionDesc"
+                            android:textColor="#363636"
+                            android:textSize="16sp"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:text="한줄 설명"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Row 2 -->
+                <LinearLayout
+                    android:id="@+id/categoryRow2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="3dp"
+                    android:orientation="horizontal">
+
+                    <!-- Viewpoint -->
+                    <LinearLayout
+                        android:id="@+id/categoryViewpoint"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center_horizontal"
+                        android:background="@drawable/rounded_grey_stroke_bg"
+                        android:padding="10dp"
+                        android:layout_marginEnd="4dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/categoryViewpointTitle"
+                            android:textColor="#000000"
+                            android:textSize="18sp"
+                            android:layout_marginBottom="15dp"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:text="🧩 시점"/>
+
+                        <TextView
+                            android:id="@+id/categoryViewpointDesc"
+                            android:textColor="#363636"
+                            android:textSize="16sp"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:text="한줄 설명"/>
+                    </LinearLayout>
+
+                    <!-- Color -->
+                    <LinearLayout
+                        android:id="@+id/categoryColor"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center_horizontal"
+                        android:background="@drawable/rounded_grey_stroke_bg"
+                        android:padding="10dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/categoryColorTitle"
+                            android:textColor="#000000"
+                            android:textSize="18sp"
+                            android:layout_marginBottom="15dp"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:text="🎨 색감"/>
+
+                        <TextView
+                            android:id="@+id/categoryColorDesc"
+                            android:textColor="#363636"
+                            android:textSize="16sp"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:text="한줄 설명"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Mood -->
+                <LinearLayout
+                    android:id="@+id/categoryMood"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_horizontal"
+                    android:background="@drawable/rounded_grey_stroke_bg"
+                    android:padding="10dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/categoryMoodTitle"
+                        android:textColor="#000000"
+                        android:textSize="18sp"
+                        android:layout_marginBottom="15dp"
+                        android:layout_height="wrap_content"
+                        android:layout_width="wrap_content"
+                        android:text="🍀 감성"/>
+
+                    <TextView
+                        android:id="@+id/categoryMoodDesc"
+                        android:textColor="#363636"
+                        android:textSize="16sp"
+                        android:layout_height="wrap_content"
+                        android:layout_width="wrap_content"
+                        android:text="한줄 설명"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Score Section -->
+            <LinearLayout
+                android:id="@+id/scoreSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="61dp"
+                android:layout_marginHorizontal="18dp"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:id="@+id/scoreRow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="8dp"
+                    android:orientation="horizontal">
+
+                    <!-- Total Score Box -->
+                    <LinearLayout
+                        android:id="@+id/scoreTotalBox"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center_horizontal"
+                        android:background="@drawable/rounded_grey_solid_bg"
+                        android:paddingVertical="9dp"
+                        android:layout_marginEnd="4dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/scoreTotalTitle"
+                            android:textColor="#000000"
+                            android:textSize="16sp"
+                            android:layout_marginBottom="15dp"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:text="🎉 Score"/>
+
+                        <TextView
+                            android:id="@+id/scoreTotalDesc"
+                            android:textColor="#363636"
+                            android:textSize="16sp"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:text="한줄 설명"/>
+                    </LinearLayout>
+
+                    <!-- Score Summary Box -->
+                    <LinearLayout
+                        android:id="@+id/scoreSummaryBox"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:gravity="center_horizontal"
+                        android:background="@drawable/rounded_grey_solid_bg"
+                        android:paddingVertical="28dp"
+                        android:paddingHorizontal="18dp"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/scoreSummaryDesc"
+                            android:textColor="#363636"
+                            android:textSize="16sp"
+                            android:layout_height="wrap_content"
+                            android:layout_width="wrap_content"
+                            android:text="한줄 설명"/>
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Retry Button -->
+                <LinearLayout
+                    android:id="@+id/btnRetry"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_horizontal"
+                    android:background="@drawable/rounded_red_button_bg"
+                    android:paddingVertical="10dp"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/btnRetryText"
+                        android:textColor="#FFFFFF"
+                        android:textSize="18sp"
+                        android:layout_height="wrap_content"
+                        android:layout_width="wrap_content"
+                        android:text="다시 평가받기"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Bottom indicator -->
+            <LinearLayout
+                android:id="@+id/bottomIndicator"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                android:paddingVertical="10dp"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:id="@+id/bottomIndicatorBar"
+                    android:layout_width="108dp"
+                    android:layout_height="4dp"
+                    android:background="@drawable/rounded_pink_tag_bg"
+                    android:orientation="vertical"/>
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

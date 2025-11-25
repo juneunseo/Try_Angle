@@ -1,0 +1,5 @@
+<resources>
+    <style name="cr50">
+        <item name="cornerSize">50dp</item>
+    </style>
+</resources>

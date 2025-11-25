@@ -37,5 +37,10 @@
             android:name=".gallery.PreviewActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".gallery.FeedbackActivity"
+            android:exported="false" />
+
+
     </application>
 </manifest>
