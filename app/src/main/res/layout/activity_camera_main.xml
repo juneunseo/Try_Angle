@@ -1,0 +1,75 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF">
+
+    <!-- ▼ Camera2Controller가 요구하는 프리뷰 컨테이너 -->
+    <FrameLayout
+        android:id="@+id/previewContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- 카메라 프리뷰 -->
+        <TextureView
+            android:id="@+id/textureView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- 격자/마스크/탭 EV 등 -->
+        <com.example.camera2app.ui.OverlayView
+            android:id="@+id/overlayView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </FrameLayout>
+    <!-- ▲ Camera2 프리뷰 계층 끝 -->
+
+
+    <!-- ▼ 디자인팀이 준 전체 UI -->
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- 상단 프리뷰 이미지 영역 -->
+        <RelativeLayout
+            android:id="@+id/layoutCameraPreview"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <ImageView
+                android:id="@+id/imagePreview"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitXY"
+                android:src="@mipmap/ic_launcher" />
+
+        </RelativeLayout>
+
+        <!-- 하단 옵션 컨트롤 UI -->
+        <LinearLayout
+            android:id="@+id/layoutControls"
+            android:orientation="vertical"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <ScrollView
+                android:id="@+id/scrollControls"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:id="@+id/controlContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+            </ScrollView>
+
+        </LinearLayout>
+
+    </LinearLayout>
+    <!-- ▲ 디자인팀 UI 끝 -->
+
+</FrameLayout>
