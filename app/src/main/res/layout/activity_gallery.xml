@@ -1,68 +1,128 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/galleryRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#101014">
+    android:orientation="vertical"
+    android:background="@android:color/white">
 
-    <!-- 상단 바: 닫기 / 제목 / 카메라 / 설정 -->
-    <ImageButton
-        android:id="@+id/btnClose"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:background="@android:color/transparent"
-        android:contentDescription="Close"
-        android:padding="4dp"
-        app:tint="@android:color/white"
-        android:src="@android:drawable/ic_menu_close_clear_cancel"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        android:layout_marginTop="12dp"
-        android:layout_marginStart="12dp" />
+    <!-- 🔥 상단 여백 (삼성 갤러리처럼 표시됨) -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:background="@android:color/white" />
 
-    <TextView
-        android:id="@+id/titleText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="무드보드 선택"
-        android:textColor="@android:color/white"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        app:layout_constraintTop_toTopOf="@id/btnClose"
-        app:layout_constraintBottom_toBottomOf="@id/btnClose"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"/>
+    <!-- 상단 바 -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:background="@android:color/white">
 
+        <ImageButton
+            android:id="@+id/btnClose"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@android:color/transparent"
+            android:padding="6dp"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            app:tint="#000000"
+            android:layout_alignParentStart="true" />
 
+        <TextView
+            android:id="@+id/titleText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="갤러리"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#000000"
+            android:layout_centerInParent="true" />
 
-    <!-- 헤더: 무드보드 카드 수평 리스트 -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/headerList"
-        android:layout_width="0dp"
-        android:layout_height="100dp"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:clipToPadding="false"
-        app:layout_constraintTop_toBottomOf="@id/btnClose"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
+        <ImageButton
+            android:id="@+id/btnSetting"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@android:color/transparent"
+            android:padding="6dp"
+            android:src="@android:drawable/ic_menu_manage"
+            app:tint="#000000"
+            android:layout_alignParentEnd="true" />
+    </RelativeLayout>
 
     <!-- 사진 그리드 -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/photoGrid"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:paddingStart="4dp"
-        android:paddingEnd="4dp"
-        android:paddingTop="8dp"
-        android:clipToPadding="false"
-        app:layout_constraintTop_toBottomOf="@id/headerList"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent" />
+        android:layout_weight="1"
+        android:padding="2dp"
+        android:background="@android:color/white"
+        android:clipToPadding="false" />
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+    <!-- 🔥 선택모드 하단 메뉴 -->
+    <LinearLayout
+        android:id="@+id/bottomMenu"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="12dp"
+        android:background="#F5F5F5"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:visibility="gone">
+
+        <!-- 공유 -->
+        <ImageView
+            android:id="@+id/btnShare"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:padding="6dp"
+            android:src="@drawable/upload"
+            app:tint="#000000" />
+
+        <!-- 간격 -->
+        <View
+            android:layout_width="20dp"
+            android:layout_height="0dp" />
+
+        <!-- 하트 -->
+        <ImageView
+            android:id="@+id/btnFav"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:padding="6dp"
+            android:src="@drawable/favorite"
+            app:tint="#000000" />
+
+        <!-- 간격 -->
+        <View
+            android:layout_width="20dp"
+            android:layout_height="0dp" />
+
+        <!-- 수정 -->
+        <ImageView
+            android:id="@+id/btnEdit"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:padding="6dp"
+            android:src="@drawable/edit"
+            app:tint="#000000" />
+
+        <!-- 간격 -->
+        <View
+            android:layout_width="20dp"
+            android:layout_height="0dp" />
+
+        <!-- 삭제 -->
+        <ImageView
+            android:id="@+id/btnDelete"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:padding="6dp"
+            android:src="@drawable/delete"
+            app:tint="#000000" />
+
+    </LinearLayout>
+
+</LinearLayout>

@@ -136,6 +136,7 @@ class MainActivity : AppCompatActivity() {
                     Camera2Controller.FlashMode.ON -> R.drawable.ic_flash
                 }
             )
+
         }
 
 
@@ -154,6 +155,17 @@ class MainActivity : AppCompatActivity() {
         binding.btnCloseOption.setOnClickListener {
             binding.optionBar.visibility = View.GONE
         }
+
+        binding.menuGallery.setOnClickListener {
+            val intent = Intent(this, GalleryActivity::class.java)
+            startActivity(intent)
+        }
+
+        binding.menuReference.setOnClickListener {
+            startActivity(Intent(this, com.example.camera2app.reference.ReferenceActivity::class.java))
+        }
+
+
 
 
     }

@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:background="@color/white"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <!-- 뒤로가기 -->
+    <ImageView
+        android:id="@+id/btnBack"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:src="@drawable/back"
+        android:layout_marginBottom="12dp"/>
+
+    \<FrameLayout
+    android:layout_width="match_parent"
+    android:layout_height="31dp">
+
+    <!-- 검색 바 배경 -->
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="31dp"
+        android:src="@drawable/search_bg"
+        android:scaleType="fitXY"/>
+
+    <!-- 아이콘 + 텍스트 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="31dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp">
+
+        <ImageView
+            android:src="@drawable/search"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            app:tint="#666666"/>
+
+        <EditText
+            android:id="@+id/referenceSearch"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginStart="8dp"
+            android:background="@android:color/transparent"
+            android:textSize="14sp"
+            android:hint="스타일 검색"
+            android:textColor="@color/black"
+            android:textColorHint="#999999"
+            android:gravity="center_vertical"/>
+    </LinearLayout>
+
+</FrameLayout>
+
+
+
+
+
+
+
+
+    <!-- 카테고리 탭 -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/categoryBar"
+            android:orientation="horizontal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+
+            <!-- 탭들은 코드에서 동적으로 추가함 -->
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- 프래그먼트 들어갈 곳 -->
+    <FrameLayout
+        android:id="@+id/referenceContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="10dp"/>
+</LinearLayout>

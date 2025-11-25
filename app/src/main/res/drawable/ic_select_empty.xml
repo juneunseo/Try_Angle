@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20">
+
+    <!-- 회색 테두리 원 -->
+    <path
+        android:pathData="M10,1
+                          A9,9 0 1,1 9.99,1Z"
+        android:strokeColor="#C8C8C8"
+        android:strokeWidth="2"
+        android:fillColor="@android:color/transparent" />
+</vector>

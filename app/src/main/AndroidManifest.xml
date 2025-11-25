@@ -41,6 +41,9 @@
             android:name=".gallery.FeedbackActivity"
             android:exported="false" />
 
+        <activity android:name=".reference.ReferenceActivity" />
+
+
 
     </application>
 </manifest>

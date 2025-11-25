@@ -13,7 +13,7 @@
         android:layout_height="25dp"
         android:layout_marginStart="20dp"
         android:layout_marginTop="24dp"
-        android:src="@mipmap/ic_launcher"
+        android:src="@drawable/back"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"/>
 
@@ -22,7 +22,6 @@
         android:id="@+id/titleText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="갤러리"
         android:textSize="20sp"
         android:textColor="#000000"
         app:layout_constraintTop_toTopOf="@id/btnBack"
@@ -36,7 +35,7 @@
         android:layout_width="30dp"
         android:layout_height="30dp"
         android:layout_marginEnd="20dp"
-        android:src="@mipmap/ic_launcher"
+        android:src="@drawable/info"
         app:layout_constraintTop_toTopOf="@id/btnBack"
         app:layout_constraintBottom_toBottomOf="@id/btnBack"
         app:layout_constraintEnd_toEndOf="parent"/>
@@ -47,10 +46,52 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:scaleType="fitCenter"
+        android:adjustViewBounds="true"
         app:layout_constraintTop_toBottomOf="@id/titleText"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottomBar"/>
+
+    <!-- 🔥 하단 아이콘 바 (4개 아이콘) -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="match_parent"
+        android:layout_height="70dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:background="#FFFFFF"
+        android:padding="12dp"
         app:layout_constraintBottom_toBottomOf="parent"
-        android:adjustViewBounds="true"/>
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ImageView
+            android:id="@+id/btnShare"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_weight="1"
+            android:src="@drawable/upload"/>
+
+        <ImageView
+            android:id="@+id/btnFavorite"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_weight="1"
+            android:src="@drawable/favorite"/>
+
+        <ImageView
+            android:id="@+id/btnEdit"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_weight="1"
+            android:src="@drawable/edit"/>
+
+        <ImageView
+            android:id="@+id/btnDelete"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_weight="1"
+            android:src="@drawable/delete"/>
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
