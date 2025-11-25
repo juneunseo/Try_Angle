@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp"
+    android:height="40dp"
+    android:viewportWidth="40"
+    android:viewportHeight="40">
+
+    <!-- 배경 원 (회색 + 투명도 40%) -->
+    <path
+        android:fillColor="#66000000"
+        android:pathData="M20,2
+            A18,18 0 1,1 19.999,2 z" />
+
+    <!-- X 아이콘 (흰색) -->
+    <path
+        android:strokeWidth="3"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:pathData="M14,14 L26,26" />
+
+    <path
+        android:strokeWidth="3"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:pathData="M26,14 L14,26" />
+
+</vector>
