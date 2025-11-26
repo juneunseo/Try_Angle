@@ -401,10 +401,19 @@ class Camera2Controller(
         sensorArray = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)!!
 
         val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
+        previewSize = chooseBestPreviewSize(map, aspectMode)
 
+        val desiredSize = fixedPreviewSizeFor(aspectMode)
+        previewSize = desiredSize
 
+        Log.d(TAG, ">>> PREVIEW SIZE = ${previewSize.width} x ${previewSize.height}")
 
         Log.d(TAG, "openCamera: aspect=$aspectMode, previewSize=$previewSize")
+
+        val all = map.getOutputSizes(SurfaceTexture::class.java)
+        all.forEach {
+            Log.d(TAG, "SUPPORTED PREVIEW SIZE → ${it.width} x ${it.height}")
+        }
 
         expRange = chars.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE) ?: Range(0, 0)
         currentExp = currentExp.coerceIn(expRange.lower, expRange.upper)
@@ -665,30 +674,14 @@ class Camera2Controller(
         applyZoomAndAspect(builder)
     }
 
-
-
+    // ★ 센서는 줌만, 비율 crop 안 함
     private fun applyZoomAndAspect(builder: CaptureRequest.Builder) {
         if (!::sensorArray.isInitialized) return
 
         val base = sensorArray
-        var zoom = currentZoom
 
-        val targetRatio = when (aspectMode) {
-            AspectMode.RATIO_1_1 -> 1f
-            AspectMode.RATIO_3_4 -> 3f / 4f
-            AspectMode.RATIO_9_16 -> 9f / 16f
-        }
-
-        val sensorRatio = base.width().toFloat() / base.height().toFloat()
-
-        val fillZoom = if (sensorRatio > targetRatio) {
-            sensorRatio / targetRatio
-        } else {
-            targetRatio / sensorRatio
-        }
-
-        zoom = max(zoom, fillZoom)
-
+        // 줌만 적용 (비율 crop X)
+        val zoom = currentZoom.coerceAtLeast(1f)
         val cropW = (base.width() / zoom).toInt()
         val cropH = (base.height() / zoom).toInt()
 
@@ -707,60 +700,55 @@ class Camera2Controller(
 
 
 
+
+    // ★ 화면 가로를 꽉 채우고, 비율에 맞게 center-crop
     fun applyCenterCropTransform() {
         val vw = textureView.width.toFloat()
         val vh = textureView.height.toFloat()
         if (vw <= 0 || vh <= 0) return
 
-        // 카메라 프리뷰 버퍼 크기
-        val bw = previewSize.width.toFloat()
-        val bh = previewSize.height.toFloat()
+        val bw = previewSize.width.toFloat()   // 1920
+        val bh = previewSize.height.toFloat()  // 1440
 
         val cx = vw / 2f
         val cy = vh / 2f
 
-        // === 1) TextureView는 그대로 "화면 꽉 채우기" ===
-        val scale = max(vw / bw, vh / bh)
+        // 타겟 화면 비율 (세로/가로)
+        val targetAspect = when (aspectMode) {
+            AspectMode.RATIO_1_1 -> 1f
+            AspectMode.RATIO_3_4 -> 4f / 3f
+            AspectMode.RATIO_9_16 -> 16f / 9f
+        }
+
+        // 화면 가로 꽉 채움
+        val displayW = vw
+        val displayH = vw * targetAspect
+
+        // ★ 버퍼가 landscape (1920x1440), 90도 회전되어 표시됨
+        // 회전 후: bh(1440) → 화면 가로, bw(1920) → 화면 세로
+        val scaleX = displayW / bh   // 화면가로 / 버퍼높이
+        val scaleY = displayH / bw   // 화면세로 / 버퍼너비
+        val scale = max(scaleX, scaleY)
+
+        Log.d("TRANSFORM", "vw=$vw, vh=$vh, bw=$bw, bh=$bh")
+        Log.d("TRANSFORM", "displayW=$displayW, displayH=$displayH")
+        Log.d("TRANSFORM", "scaleX=$scaleX, scaleY=$scaleY, scale=$scale")
+
         val m = Matrix().apply {
             setScale(scale, scale, cx, cy)
         }
         textureView.setTransform(m)
 
-        // === 2) 화면비에 맞는 "실제 프리뷰 영역 Rect" 계산 ===
-        val targetAspect = when (aspectMode) {
-            AspectMode.RATIO_1_1 -> 1f
-            AspectMode.RATIO_3_4 -> 3f / 4f
-            AspectMode.RATIO_9_16 -> 9f / 16f
-        }
+        // 레터박스 영역
+        val targetRect = RectF(
+            0f,
+            cy - displayH / 2f,
+            vw,
+            cy + displayH / 2f
+        )
 
-        val viewAspect = vw / vh
-
-        val targetRect = if (viewAspect < targetAspect) {
-            // 화면이 더 세로로 길다 → 위/아래 레터박스
-            val activeHeight = vw / targetAspect
-            val top = (vh - activeHeight) / 2f
-            RectF(
-                0f,
-                top,
-                vw,
-                top + activeHeight
-            )
-        } else {
-            // 화면이 더 가로로 넓다 → 좌우 레터박스
-            val activeWidth = vh * targetAspect
-            val left = (vw - activeWidth) / 2f
-            RectF(
-                left,
-                0f,
-                left + activeWidth,
-                vh
-            )
-        }
-
-        // === 3) 레터박스 Rect를 애니메이션으로 보간 ===
         val startRect = currentVisibleRect ?: targetRect
 
-        // 처음 한 번은 바로 세팅 (튀지 않게)
         if (currentVisibleRect == null) {
             currentVisibleRect = RectF(targetRect)
             overlayView.setVisibleRect(targetRect)
@@ -769,19 +757,16 @@ class Camera2Controller(
         }
 
         rectAnimator?.cancel()
-
         rectAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 220L
             interpolator = AccelerateDecelerateInterpolator()
-
             addUpdateListener { va ->
                 val t = va.animatedValue as Float
-                fun lerp(a: Float, b: Float): Float = a + (b - a) * t
-
+                fun lerp(a: Float, b: Float) = a + (b - a) * t
                 val r = RectF(
-                    lerp(startRect.left,   targetRect.left),
-                    lerp(startRect.top,    targetRect.top),
-                    lerp(startRect.right,  targetRect.right),
+                    0f,
+                    lerp(startRect.top, targetRect.top),
+                    vw,
                     lerp(startRect.bottom, targetRect.bottom)
                 )
                 currentVisibleRect = r
@@ -794,9 +779,30 @@ class Camera2Controller(
 
 
 
+    private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+
+    private fun findBestPreviewSize(map: StreamConfigurationMap, mode: AspectMode): Size {
+        val targetRatio = when (mode) {
+            AspectMode.RATIO_1_1  -> 1f
+            AspectMode.RATIO_3_4  -> 4f / 3f   // 버퍼는 landscape
+            AspectMode.RATIO_9_16 -> 16f / 9f
+        }
+
+        val sizes = map.getOutputSizes(SurfaceTexture::class.java)
+
+        // 비율 ±5% 허용, 그 중 최대 해상도
+        return sizes
+            .filter { abs(it.width.toFloat() / it.height - targetRatio) < 0.05f }
+            .maxByOrNull { it.width.toLong() * it.height }
+            ?: sizes.maxBy { it.width.toLong() * it.height }
+    }
 
 
-
+    // ★ previewSize를 landscape 4:3로 고정
+    private fun fixedPreviewSizeFor(mode: AspectMode): Size {
+        // 모든 비율에서 동일한 4:3 landscape 버퍼 사용
+        return Size(1920, 1440)  // landscape 4:3
+    }
 
 
 
@@ -804,14 +810,34 @@ class Camera2Controller(
     // Size selection
     // =========================================================================================
     // 내가 원하는 비율에 맞는 "목표" 해상도 (preset)
-    private fun fixedPreviewSizeFor(mode: AspectMode): Size {
-        return when (mode) {
-            AspectMode.RATIO_1_1 -> Size(1440, 1440)   // 1:1
-            AspectMode.RATIO_3_4 -> Size(1440, 1920)   // 3:4  (0.75)
-            AspectMode.RATIO_9_16 -> Size(1440, 2560)  // 9:16 (0.5625)
+    private fun chooseBestPreviewSize(map: StreamConfigurationMap, mode: AspectMode): Size {
 
+        val aspect = when (mode) {
+            AspectMode.RATIO_1_1 -> 1f
+            AspectMode.RATIO_3_4 -> 3f / 4f
+            AspectMode.RATIO_9_16 -> 9f / 16f
         }
+
+        val all = map.getOutputSizes(SurfaceTexture::class.java)
+
+        // aspect ± 1% 허용
+        val candidates = all.filter { s ->
+            val r = s.width.toFloat() / s.height
+            kotlin.math.abs(r - aspect) < 0.01f
+        }
+
+        // aspect 맞는 사이즈 중 최대 해상도 선택
+        val best = if (candidates.isNotEmpty()) {
+            candidates.maxBy { it.width.toLong() * it.height.toLong() }
+        } else {
+            // 혹시 aspect 딱 맞는 게 없으면 가장 큰 previewSize
+            all.maxBy { it.width.toLong() * it.height.toLong() }
+        }
+
+        Log.d(TAG, "chooseBestPreviewSize: ${best.width} x ${best.height}")
+        return best
     }
+
 
     // 위 preset과 가장 가까운, 실제 "지원되는" 프리뷰 사이즈를 선택
     private fun nearestSupportedPreviewSize(
