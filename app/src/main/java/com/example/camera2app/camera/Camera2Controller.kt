@@ -675,24 +675,46 @@ class Camera2Controller(
     }
 
     // ★ 센서는 줌만, 비율 crop 안 함
+    // ★ 센서 크롭: 줌 + 화면비 모두 적용
     private fun applyZoomAndAspect(builder: CaptureRequest.Builder) {
         if (!::sensorArray.isInitialized) return
 
         val base = sensorArray
+        val sensorW = base.width()
+        val sensorH = base.height()
+        val sensorRatio = sensorW.toFloat() / sensorH  // 예: 4:3 = 1.33
 
-        // ★ 줌만! 비율 crop 없음!
+        // 목표 비율 (landscape 기준)
+        val targetRatio = when (aspectMode) {
+            AspectMode.RATIO_1_1  -> 1f
+            AspectMode.RATIO_3_4  -> 4f / 3f   // landscape = 1.33
+            AspectMode.RATIO_9_16 -> 16f / 9f  // landscape = 1.78
+        }
+
+        // 1) 먼저 비율에 맞게 크롭 영역 계산
+        val (aspectCropW, aspectCropH) = if (sensorRatio > targetRatio) {
+            // 센서가 더 넓음 → 좌우 잘라냄
+            val newW = (sensorH * targetRatio).toInt()
+            newW to sensorH
+        } else {
+            // 센서가 더 좁음 → 위아래 잘라냄
+            val newH = (sensorW / targetRatio).toInt()
+            sensorW to newH
+        }
+
+        // 2) 줌 적용
         val zoom = currentZoom.coerceAtLeast(1f)
-        val cropW = (base.width() / zoom).toInt()
-        val cropH = (base.height() / zoom).toInt()
+        val finalW = (aspectCropW / zoom).toInt()
+        val finalH = (aspectCropH / zoom).toInt()
 
         val cx = base.centerX()
         val cy = base.centerY()
 
         val rect = Rect(
-            cx - cropW / 2,
-            cy - cropH / 2,
-            cx + cropW / 2,
-            cy + cropH / 2
+            cx - finalW / 2,
+            cy - finalH / 2,
+            cx + finalW / 2,
+            cy + finalH / 2
         )
 
         builder.set(CaptureRequest.SCALER_CROP_REGION, rect)
@@ -706,17 +728,29 @@ class Camera2Controller(
         val cx = vw / 2f
         val cy = vh / 2f
 
+        // ★ 비율 보정 계산
+        val cropRatio = when (aspectMode) {
+            AspectMode.RATIO_1_1 -> 1f
+            AspectMode.RATIO_3_4 -> 4f / 3f
+            AspectMode.RATIO_9_16 -> 16f / 9f
+        }
+        val bufferRatio = previewSize.width.toFloat() / previewSize.height  // 4:3 = 1.33
+
+        // 센서 크롭 비율과 버퍼 비율의 차이를 보정
+        // 예: 1:1 크롭 → 4:3 버퍼 = 세로가 1.33배 늘어남 → 0.75로 줄여서 보정
+        val scaleY = cropRatio / bufferRatio
+
+        val matrix = Matrix()
+        matrix.setScale(1f, scaleY, cx, cy)
+        textureView.setTransform(matrix)
+
+        // 레터박스 영역 계산
         val targetAspect = when (aspectMode) {
             AspectMode.RATIO_1_1 -> 1f
             AspectMode.RATIO_3_4 -> 4f / 3f
             AspectMode.RATIO_9_16 -> 16f / 9f
         }
 
-        // ★ Matrix 초기화 (아무 변환 없음)
-        val matrix = Matrix()
-        textureView.setTransform(matrix)
-
-        // 레터박스 영역만 설정
         val targetH = vw * targetAspect
         val targetRect = RectF(
             0f,
@@ -754,7 +788,6 @@ class Camera2Controller(
         }
         rectAnimator?.start()
     }
-
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
