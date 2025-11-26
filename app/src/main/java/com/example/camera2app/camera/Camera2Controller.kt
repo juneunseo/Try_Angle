@@ -698,16 +698,10 @@ class Camera2Controller(
         builder.set(CaptureRequest.SCALER_CROP_REGION, rect)
     }
 
-
-
-
     fun applyCenterCropTransform() {
         val vw = textureView.width.toFloat()
         val vh = textureView.height.toFloat()
         if (vw <= 0 || vh <= 0) return
-
-        val bw = previewSize.width.toFloat()
-        val bh = previewSize.height.toFloat()
 
         val cx = vw / 2f
         val cy = vh / 2f
@@ -718,22 +712,11 @@ class Camera2Controller(
             AspectMode.RATIO_9_16 -> 16f / 9f
         }
 
+        // ★ Matrix 초기화 (아무 변환 없음)
         val matrix = Matrix()
-
-        // 1) TextureView stretch 취소
-        matrix.setScale(bw / vw, bh / vh, cx, cy)
-
-        // 2) 회전 없음! (TextureView가 이미 처리함)
-        // matrix.postRotate(0f, cx, cy)
-
-        // 3) 화면 가로 꽉 채우기
-        //    버퍼 bw x bh 그대로 (회전 안 했으니까)
-        //    버퍼 세로(bh)를 화면 가로(vw)에 맞춤
-        val scale = vw / bh
-        matrix.postScale(scale, scale, cx, cy)
-
         textureView.setTransform(matrix)
 
+        // 레터박스 영역만 설정
         val targetH = vw * targetAspect
         val targetRect = RectF(
             0f,
@@ -771,9 +754,6 @@ class Camera2Controller(
         }
         rectAnimator?.start()
     }
-
-
-
 
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
