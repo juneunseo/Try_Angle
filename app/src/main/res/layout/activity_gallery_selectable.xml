@@ -6,7 +6,7 @@
     android:orientation="vertical"
     android:background="@android:color/white">
 
-    <!-- 상단 여백 (갤럭시 느낌) -->
+    <!-- 상단 여백 -->
     <View
         android:layout_width="match_parent"
         android:layout_height="50dp"
@@ -14,7 +14,7 @@
 
     <!-- 상단바 -->
     <RelativeLayout
-        android:id="@+id/topBarNormal"
+        android:id="@+id/topBar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:paddingStart="16dp"
@@ -32,10 +32,10 @@
             android:layout_alignParentStart="true" />
 
         <TextView
-            android:id="@+id/titleText"
+            android:id="@+id/selectTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="갤러리"
+            android:text="사진 선택"
             android:textSize="18sp"
             android:textStyle="bold"
             android:textColor="#000000"
@@ -52,14 +52,60 @@
             android:layout_alignParentEnd="true" />
     </RelativeLayout>
 
-    <!-- 사진 그리드 -->
+    <!-- 선택모드 그리드 -->
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/photoGrid"
+        android:id="@+id/photoGridSelectable"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:padding="2dp"
         android:clipToPadding="false"
         android:background="@android:color/white" />
+
+    <!-- 하단 메뉴 -->
+    <LinearLayout
+        android:id="@+id/bottomMenu"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="12dp"
+        android:background="#F5F5F5"
+        android:layout_width="match_parent"
+        android:layout_height="64dp">
+
+        <ImageView
+            android:id="@+id/btnShare"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/upload"
+            app:tint="#000000" />
+
+        <View android:layout_width="20dp" android:layout_height="0dp" />
+
+        <ImageView
+            android:id="@+id/btnFav"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/favorite"
+            app:tint="#000000" />
+
+        <View android:layout_width="20dp" android:layout_height="0dp" />
+
+        <ImageView
+            android:id="@+id/btnEdit"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/edit"
+            app:tint="#000000" />
+
+        <View android:layout_width="20dp" android:layout_height="0dp" />
+
+        <ImageView
+            android:id="@+id/btnDelete"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/delete"
+            app:tint="#000000" />
+
+    </LinearLayout>
 
 </LinearLayout>
