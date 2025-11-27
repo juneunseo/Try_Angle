@@ -41,6 +41,8 @@ class MainActivity : AppCompatActivity() {
         requestPermissionsIfNeeded()
 
         setAspectText(Camera2Controller.AspectMode.RATIO_9_16)
+
+
     }
 
     // ---------------------------
@@ -308,15 +310,6 @@ class MainActivity : AppCompatActivity() {
     // ---------------------------
     // Aspect Ratio
     // ---------------------------
-    private fun toggleAspectRatio() {
-        val next = when (binding.btnRatio.text) {
-            "1:1" -> "4:3"
-            "4:3" -> "16:9"
-            else -> "1:1"
-        }
-        binding.btnRatio.text = next
-        controller.setAspectRatio(next)
-    }
 
     override fun onResume() {
         super.onResume()
@@ -349,4 +342,82 @@ class MainActivity : AppCompatActivity() {
             Camera2Controller.AspectMode.RATIO_9_16 -> "16:9"
         }
     }
+
+    // ---------------------------
+    // 블러 전환 애니메이션
+    // ---------------------------
+
+    // MainActivity.kt
+
+    // ---------------------------
+// 블러 효과 (추가)
+// ---------------------------
+    private fun setPreviewBlur(enabled: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            if (enabled) {
+                binding.textureView.setRenderEffect(
+                    android.graphics.RenderEffect.createBlurEffect(
+                        100f, 100f,
+                        android.graphics.Shader.TileMode.CLAMP
+                    )
+                )
+            } else {
+                binding.textureView.setRenderEffect(null)
+            }
+        } else {
+            // Android 11 이하: 알파로 페이드
+            binding.textureView.alpha = if (enabled) 0.3f else 1f
+        }
+    }
+
+    // ---------------------------
+// Aspect Ratio (수정)
+// ---------------------------
+    private fun toggleAspectRatio() {
+        // 1) 블러 ON
+        setPreviewBlur(true)
+
+        // 2) 비율 전환
+        val next = when (binding.btnRatio.text) {
+            "1:1" -> "4:3"
+            "4:3" -> "16:9"
+            else -> "1:1"
+        }
+        binding.btnRatio.text = next
+        controller.setAspectRatio(next)
+
+        // 3) 0.3초 후 블러 해제
+        binding.textureView.postDelayed({
+            setPreviewBlur(false)
+        }, 300L)
+    }
+    private fun playAspectTransition(onMidpoint: () -> Unit) {
+        val blurOverlay = binding.blurOverlay  // ★ XML에 추가 필요
+
+        // 1) 블러 페이드 인
+        blurOverlay.alpha = 0f
+        blurOverlay.visibility = View.VISIBLE
+        blurOverlay.animate()
+            .alpha(1f)
+            .setDuration(150)
+            .withEndAction {
+                // 2) 중간 지점에서 비율 변경
+                onMidpoint()
+
+                // 3) 블러 페이드 아웃
+                blurOverlay.animate()
+                    .alpha(0f)
+                    .setDuration(150)
+                    .setStartDelay(50)  // 비율 변경 적용 대기
+                    .withEndAction {
+                        blurOverlay.visibility = View.GONE
+                    }
+                    .start()
+            }
+            .start()
+    }
+
+
+
+
 }

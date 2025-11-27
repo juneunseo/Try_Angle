@@ -11,6 +11,9 @@
         android:layout_height="match_parent"
         android:keepScreenOn="true">
 
+
+
+
         <TextureView
             android:id="@+id/textureView"
             android:layout_width="match_parent"
@@ -22,6 +25,16 @@
             android:layout_height="match_parent"
             android:clickable="true"
             android:focusable="true" />
+
+        <!-- previewContainer 안에 또는 바로 뒤에 추가 -->
+        <View
+            android:id="@+id/blurOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#CC000000"
+            android:visibility="gone" />
+
+
     </FrameLayout>
 
     <!-- ▼ 상단 바 -->
