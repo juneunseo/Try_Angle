@@ -720,6 +720,10 @@ class Camera2Controller(
         builder.set(CaptureRequest.SCALER_CROP_REGION, rect)
     }
 
+    // ============================================================
+// 수정된 applyCenterCropTransform()
+// ============================================================
+
     fun applyCenterCropTransform() {
         val vw = textureView.width.toFloat()
         val vh = textureView.height.toFloat()
@@ -728,30 +732,35 @@ class Camera2Controller(
         val cx = vw / 2f
         val cy = vh / 2f
 
-        // ★ 비율 보정 계산
-        val cropRatio = when (aspectMode) {
-            AspectMode.RATIO_1_1 -> 1f
-            AspectMode.RATIO_3_4 -> 4f / 3f
-            AspectMode.RATIO_9_16 -> 16f / 9f
-        }
-        val bufferRatio = previewSize.width.toFloat() / previewSize.height  // 4:3 = 1.33
+        val bufferRatio = previewSize.width.toFloat() / previewSize.height
 
-        // 센서 크롭 비율과 버퍼 비율의 차이를 보정
-        // 예: 1:1 크롭 → 4:3 버퍼 = 세로가 1.33배 늘어남 → 0.75로 줄여서 보정
-        val scaleY = cropRatio / bufferRatio
+        // ★ 4:3은 1:1과 같은 scaleY 사용 (화각 동일)
+        val scaleY = when (aspectMode) {
+            AspectMode.RATIO_1_1 -> {
+                val cropRatio = 1f
+                cropRatio / bufferRatio  // 0.75
+            }
+            AspectMode.RATIO_3_4 -> {
+                val cropRatio = 1f
+                cropRatio / bufferRatio  // 0.75 (1:1과 동일)
+            }
+            AspectMode.RATIO_9_16 -> {
+                val croppedRatio = 16f / 9f
+                bufferRatio / croppedRatio  // 0.75
+            }
+        }
 
         val matrix = Matrix()
         matrix.setScale(1f, scaleY, cx, cy)
         textureView.setTransform(matrix)
 
-        // 레터박스 영역 계산
-        val targetAspect = when (aspectMode) {
-            AspectMode.RATIO_1_1 -> 1f
-            AspectMode.RATIO_3_4 -> 4f / 3f
-            AspectMode.RATIO_9_16 -> 16f / 9f
+        // ★ 레터박스는 각 비율에 맞게 계산
+        val targetH = when (aspectMode) {
+            AspectMode.RATIO_1_1 -> vw                   // 정사각형
+            AspectMode.RATIO_3_4 -> vw * (4f / 3f)       // 3:4 portrait
+            AspectMode.RATIO_9_16 -> vw * (16f / 9f)     // 9:16 portrait
         }
 
-        val targetH = vw * targetAspect
         val targetRect = RectF(
             0f,
             cy - targetH / 2f,
@@ -788,6 +797,33 @@ class Camera2Controller(
         }
         rectAnimator?.start()
     }
+
+
+// ============================================================
+// 설명
+// ============================================================
+    /*
+    문제의 핵심:
+    - 버퍼: 1920x1440 (4:3 landscape = 1.333)
+    - 센서 crop:
+      - 1:1  → 센서에서 정사각형 영역만 읽음
+      - 4:3  → 센서에서 4:3 영역 읽음 (버퍼와 동일)
+      - 16:9 → 센서에서 16:9 영역 읽음
+
+    센서에서 16:9로 crop하면, 그 결과가 4:3 버퍼에 들어감
+    → 원래 16:9 영상이 4:3 공간에 맞춰지면서 세로로 늘어남
+
+    보정:
+    - 1:1 모드: scaleY = 1.333 / 1.0 = 1.333 (세로 축소)
+    - 4:3 모드: scaleY = 1.333 / 1.333 = 1.0 (변화 없음)
+    - 16:9 모드: scaleY = 1.333 / 1.778 = 0.75 (세로 축소)
+
+    기존 코드는 반대로 계산했음:
+    cropRatio / bufferRatio → 이게 문제
+
+    수정 코드:
+    bufferRatio / croppedRatio → 올바른 보정
+    */
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
