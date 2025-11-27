@@ -46,24 +46,20 @@ class GalleryActivity : ComponentActivity() {
 
         normalBinding.photoGrid.apply {
             layoutManager = GridLayoutManager(this@GalleryActivity, 3)
-            adapter = PhotoAdapter(this@GalleryActivity, photos)
+            adapter = PhotoAdapter(this@GalleryActivity, photos) { pos ->
+                // ★ 롱클릭 시 선택 모드 진입
+                enterSelectMode(pos)
+            }
         }
 
         normalBinding.btnClose.setOnClickListener { finish() }
 
-        normalBinding.photoGrid.addOnItemTouchListener(
-            RecyclerItemClickListener(
-                this,
-                normalBinding.photoGrid,
-                onLongClick = { pos -> enterSelectMode(pos) }
-            )
-        )
+        // ★ RecyclerItemClickListener 제거
     }
 
     // ---------------------- Select Mode ----------------------
     private fun enterSelectMode(firstPos: Int) {
         selectedPhotos.clear()
-        selectedPhotos.add(photos[firstPos])
 
         inSelectMode = true
         selectBinding = ActivityGallerySelectableBinding.inflate(layoutInflater)

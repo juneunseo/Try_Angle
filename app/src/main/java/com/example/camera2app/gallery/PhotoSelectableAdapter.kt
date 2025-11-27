@@ -1,3 +1,4 @@
+// PhotoSelectableAdapter.kt
 package com.example.camera2app.gallery
 
 import android.net.Uri
@@ -11,8 +12,8 @@ import com.example.camera2app.databinding.ItemPhotoSelectableBinding
 
 class PhotoSelectableAdapter(
     private val photos: List<Uri>,
-    private val selected: MutableList<Uri>,
-    private val onChanged: () -> Unit
+    private val selectedPhotos: MutableList<Uri>,
+    private val onSelectionChanged: () -> Unit
 ) : RecyclerView.Adapter<PhotoSelectableAdapter.VH>() {
 
     inner class VH(val b: ItemPhotoSelectableBinding) : RecyclerView.ViewHolder(b.root)
@@ -31,24 +32,36 @@ class PhotoSelectableAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val uri = photos[position]
+        val isSelected = selectedPhotos.contains(uri)
 
+        // 썸네일 로드
         Glide.with(holder.b.thumb)
             .load(uri)
             .centerCrop()
             .into(holder.b.thumb)
 
-        val isOn = selected.contains(uri)
+        // ★ 아이콘 항상 표시 (선택 모드에서는 빈 원 or 체크)
+        holder.b.checkIcon.visibility = View.VISIBLE
 
-        holder.b.selectionOverlay.visibility = if (isOn) View.VISIBLE else View.GONE
-        holder.b.checkIcon.visibility = if (isOn) View.VISIBLE else View.GONE
+        if (isSelected) {
+            // 선택됨 → 체크 아이콘 + 오버레이
+            holder.b.checkIcon.setImageResource(R.drawable.ic_select_checked)
+            holder.b.overlay.visibility = View.VISIBLE
+        } else {
+            // 선택 안됨 → 빈 원 아이콘
+            holder.b.checkIcon.setImageResource(R.drawable.ic_select_empty)
+            holder.b.overlay.visibility = View.GONE
+        }
 
+        // 클릭 → 선택/해제 토글
         holder.b.root.setOnClickListener {
-            if (isOn) selected.remove(uri)
-            else selected.add(uri)
-
+            if (selectedPhotos.contains(uri)) {
+                selectedPhotos.remove(uri)
+            } else {
+                selectedPhotos.add(uri)
+            }
             notifyItemChanged(position)
-            onChanged()
+            onSelectionChanged()
         }
     }
 }
-
