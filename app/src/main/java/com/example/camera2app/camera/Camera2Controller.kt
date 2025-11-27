@@ -154,6 +154,12 @@ class Camera2Controller(
     private var currentVisibleRect: RectF? = null
     private var rectAnimator: ValueAnimator? = null
 
+    // === Timer ===
+    enum class TimerMode { OFF, SEC_3, SEC_10 }
+    private var timerMode = TimerMode.OFF
+    private var timerHandler: Handler? = null
+    private var timerCountdownCallback: ((Int) -> Unit)? = null
+
 
     // Camera2Controller 안에
     fun getAspectMode(): AspectMode = aspectMode
@@ -1183,12 +1189,60 @@ class Camera2Controller(
         applyCenterCropTransform()
     }
 
+    // =========================================================================================
+// Timer
+// =========================================================================================
+    fun getTimerMode() = timerMode
 
+    fun setTimerMode(mode: TimerMode) {
+        timerMode = mode
+    }
 
+    fun cycleTimerMode(): TimerMode {
+        timerMode = when (timerMode) {
+            TimerMode.OFF -> TimerMode.SEC_3
+            TimerMode.SEC_3 -> TimerMode.SEC_10
+            TimerMode.SEC_10 -> TimerMode.OFF
+        }
+        return timerMode
+    }
 
+    fun setTimerCountdownCallback(callback: (Int) -> Unit) {
+        timerCountdownCallback = callback
+    }
 
+    fun takePictureWithTimer() {
+        when (timerMode) {
+            TimerMode.OFF -> takePicture()
+            TimerMode.SEC_3 -> startTimerCountdown(3)
+            TimerMode.SEC_10 -> startTimerCountdown(10)
+        }
+    }
 
+    private fun startTimerCountdown(seconds: Int) {
+        var remaining = seconds
 
+        timerHandler = Handler(context.mainLooper)
 
+        val runnable = object : Runnable {
+            override fun run() {
+                if (remaining > 0) {
+                    timerCountdownCallback?.invoke(remaining)
+                    remaining--
+                    timerHandler?.postDelayed(this, 1000)
+                } else {
+                    timerCountdownCallback?.invoke(0)
+                    takePicture()
+                }
+            }
+        }
+
+        timerHandler?.post(runnable)
+    }
+
+    fun cancelTimer() {
+        timerHandler?.removeCallbacksAndMessages(null)
+        timerHandler = null
+    }
 
 }

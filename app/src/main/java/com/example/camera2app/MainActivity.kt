@@ -77,6 +77,28 @@ class MainActivity : AppCompatActivity() {
                 binding.fpsText.text = String.format(Locale.US, "%.1f FPS", fps)
             }
         }
+
+        // ★ 타이머 카운트다운 콜백 설정
+        controller.setTimerCountdownCallback { remaining ->
+            runOnUiThread {
+                if (remaining > 0) {
+                    binding.timerCountdownText.text = remaining.toString()
+                    binding.timerCountdownText.visibility = View.VISIBLE
+                    // 애니메이션 효과
+                    binding.timerCountdownText.scaleX = 1.5f
+                    binding.timerCountdownText.scaleY = 1.5f
+                    binding.timerCountdownText.alpha = 1f
+                    binding.timerCountdownText.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .alpha(0.8f)
+                        .setDuration(800)
+                        .start()
+                } else {
+                    binding.timerCountdownText.visibility = View.GONE
+                }
+            }
+        }
     }
 
     // ---------------------------
@@ -108,8 +130,8 @@ class MainActivity : AppCompatActivity() {
     // ---------------------------
     private fun initButtons() {
 
-        // 촬영
-        binding.btnShutter.setOnClickListener { controller.takePicture() }
+        // 촬영 - takePicture() → takePictureWithTimer()
+        binding.btnShutter.setOnClickListener { controller.takePictureWithTimer() }
 
         // 카메라 전환
         binding.btnSwitch.setOnClickListener {
@@ -117,11 +139,17 @@ class MainActivity : AppCompatActivity() {
             controller.setFlashMode(Camera2Controller.FlashMode.OFF)
         }
 
+        // ★ 옵션 버튼 (점 6개) - 옵션바 열기
         binding.btnOptions.setOnClickListener {
             toggleOptionBar()
         }
 
-        // 플래시 (AUTO → ON → OFF)
+        // ★ 옵션 닫기 (X 버튼) - 옵션바 닫기
+        binding.btnCloseOption.setOnClickListener {
+            toggleOptionBar()
+        }
+
+        // 플래시 (OFF → AUTO → ON → OFF)
         binding.btnFlash.setOnClickListener {
             val next = when (controller.getFlashMode()) {
                 Camera2Controller.FlashMode.OFF -> Camera2Controller.FlashMode.AUTO
@@ -138,9 +166,7 @@ class MainActivity : AppCompatActivity() {
                     Camera2Controller.FlashMode.ON -> R.drawable.ic_flash
                 }
             )
-
         }
-
 
         // EXP → EV 슬라이더 중앙 오픈
         binding.btnExp.setOnClickListener {
@@ -153,23 +179,16 @@ class MainActivity : AppCompatActivity() {
         // ratio 변경
         binding.btnRatio.setOnClickListener { toggleAspectRatio() }
 
-        // 옵션 닫기
-        binding.btnCloseOption.setOnClickListener {
-            binding.optionBar.visibility = View.GONE
-        }
-
+        // 갤러리
         binding.menuGallery.setOnClickListener {
             val intent = Intent(this, GalleryActivity::class.java)
             startActivity(intent)
         }
 
+        // 레퍼런스
         binding.menuReference.setOnClickListener {
             startActivity(Intent(this, com.example.camera2app.reference.ReferenceActivity::class.java))
         }
-
-
-
-
     }
 
     // ---------------------------
@@ -177,13 +196,7 @@ class MainActivity : AppCompatActivity() {
     // ---------------------------
 
     private fun showTapEvSliderCenter() {
-        val x = binding.previewContainer.width * 0.8f
-        val y = binding.previewContainer.height * 0.5f
-        showTapEvSlider(x, y)
-    }
-
-    private fun showTapEvSlider(x: Float, y: Float) {
-        // 이미 존재하면 제거
+        // 이미 열려있으면 닫기
         if (tapEvSlider != null) {
             rootFrame.removeView(tapEvSlider)
             tapEvSlider = null
@@ -191,10 +204,27 @@ class MainActivity : AppCompatActivity() {
         }
 
         isAllAuto = false
+        tapEvSlider = createTapEvSlider(0f, 0f)
+        rootFrame.addView(tapEvSlider)
+        tapEvSlider?.bringToFront()
+    }
 
+    private fun showTapEvSlider(x: Float, y: Float) {
+        // 프리뷰 탭하면 슬라이더 닫기
+        if (tapEvSlider != null) {
+            rootFrame.removeView(tapEvSlider)
+            tapEvSlider = null
+            return
+        }
+
+        // EXP 버튼으로만 열리게 하려면 여기서 return
+        // 탭으로도 열고 싶으면 아래 코드 활성화
+        /*
+        isAllAuto = false
         tapEvSlider = createTapEvSlider(x, y)
         rootFrame.addView(tapEvSlider)
         tapEvSlider?.bringToFront()
+        */
     }
 
     private var optionVisible = false
@@ -203,9 +233,12 @@ class MainActivity : AppCompatActivity() {
         optionVisible = !optionVisible
 
         if (optionVisible) {
+            // 옵션바 열기: 옵션 버튼 숨기고, 옵션바 표시
+            binding.btnOptions.visibility = View.GONE
             binding.optionBar.visibility = View.VISIBLE
             animateOptionBar(show = true)
         } else {
+            // 옵션바 닫기: 옵션바 숨기고, 옵션 버튼 표시
             animateOptionBar(show = false)
         }
     }
@@ -228,66 +261,139 @@ class MainActivity : AppCompatActivity() {
                 .setDuration(200)
                 .withEndAction {
                     view.visibility = View.GONE
+                    // ★ 옵션바 닫힐 때 옵션 버튼 다시 표시
+                    binding.btnOptions.visibility = View.VISIBLE
                 }
                 .start()
         }
     }
 
 
-
     private fun createTapEvSlider(tapX: Float, tapY: Float): View {
         val container = FrameLayout(this)
 
+        // 전체 슬라이더 높이
+        val sliderHeight = dp(280)
+        val lineWidth = dp(3)
+        val iconSize = dp(32)
+        val containerWidth = dp(50)
+
+        // 아이콘 이동 가능 범위 (위아래 여백 제외)
+        val padding = dp(16)
+        val trackHeight = sliderHeight - iconSize - (padding * 2)
+        val iconGap = dp(8)  // 아이콘 양옆 빈 공간
+
+        // ─────────────────────────────────────────
+        // 1) 위쪽 라인
+        // ─────────────────────────────────────────
+        val topLine = View(this).apply {
+            setBackgroundColor(0xFFFFFFFF.toInt())
+        }
+        val topLineLp = FrameLayout.LayoutParams(lineWidth, 0).apply {
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
+            topMargin = padding
+        }
+        container.addView(topLine, topLineLp)
+
+        // ─────────────────────────────────────────
+        // 2) 아래쪽 라인
+        // ─────────────────────────────────────────
+        val bottomLine = View(this).apply {
+            setBackgroundColor(0xFFFFFFFF.toInt())
+        }
+        val bottomLineLp = FrameLayout.LayoutParams(lineWidth, 0).apply {
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+            bottomMargin = padding
+        }
+        container.addView(bottomLine, bottomLineLp)
+
+        // ─────────────────────────────────────────
+        // 3) 태양 아이콘 (위아래로 움직임, 줄 위에 표시)
+        // ─────────────────────────────────────────
+        val sunIcon = ImageView(this).apply {
+            setImageResource(R.drawable.clear_day)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            elevation = dp(4).toFloat()  // 줄 위에 표시
+        }
+        val sunLp = FrameLayout.LayoutParams(iconSize, iconSize).apply {
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
+            topMargin = padding + (trackHeight / 2)  // 초기 위치: 중앙
+        }
+        container.addView(sunIcon, sunLp)
+
+        // 라인 높이 업데이트 함수
+        fun updateLines(iconTopMargin: Int) {
+            // 위쪽 라인: padding부터 아이콘 위까지
+            val topLineHeight = iconTopMargin - padding - iconGap
+            topLineLp.height = maxOf(0, topLineHeight)
+            topLine.layoutParams = topLineLp
+
+            // 아래쪽 라인: 아이콘 아래부터 끝까지
+            val iconBottom = iconTopMargin + iconSize + iconGap
+            val bottomLineHeight = sliderHeight - padding - iconBottom
+            bottomLineLp.height = maxOf(0, bottomLineHeight)
+            bottomLine.layoutParams = bottomLineLp
+        }
+
+        // 초기 라인 높이 설정
+        updateLines(sunLp.topMargin)
+
+        // ─────────────────────────────────────────
+        // 4) 투명 SeekBar (터치 영역)
+        // ─────────────────────────────────────────
         val seek = SeekBar(this).apply {
             max = 800
+            progress = 400  // 중앙 = EV 0
             rotation = -90f
-            progress = 400
-            thumb = resources.getDrawable(R.drawable.ic_ev_thumb, null)
-            progressDrawable = resources.getDrawable(R.drawable.ev_slider_progress, null)
+
+            // 투명하게
+            thumb = null
+            progressDrawable = null
+            background = null
         }
 
         seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                // p: 0~800, 중앙 400 = EV 0
                 val ev = (p - 400) / 100.0
                 controller.applyEv(ev)
+
+                // 아이콘 위치 업데이트
+                // p=0 → 맨 아래 (어두움), p=800 → 맨 위 (밝음)
+                val ratio = 1f - (p / 800f)  // 0~1 (위에서 아래로)
+                val newTopMargin = padding + (trackHeight * ratio).toInt()
+                sunLp.topMargin = newTopMargin
+                sunIcon.layoutParams = sunLp
+
+                // 라인 높이 업데이트
+                updateLines(newTopMargin)
             }
 
             override fun onStartTrackingTouch(sb: SeekBar?) {}
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
-        val height = dp(200)
-
-        val lp = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            height
-        ).apply {
-            gravity = Gravity.END
-            rightMargin = dp(20)
-
-            val half = height / 2
-            val t = (tapY - half).toInt()
-
-            topMargin = t.coerceIn(
-                dp(60),
-                binding.previewContainer.height - height - dp(60)
-            )
+        // SeekBar 레이아웃 (전체 영역 덮음)
+        val seekLp = FrameLayout.LayoutParams(sliderHeight, containerWidth).apply {
+            gravity = Gravity.CENTER
         }
+        container.addView(seek, seekLp)
 
-        container.addView(
-            seek,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
+        // ─────────────────────────────────────────
+        // 컨테이너 위치 설정
+        // ─────────────────────────────────────────
+        val lp = FrameLayout.LayoutParams(containerWidth, sliderHeight).apply {
+            gravity = Gravity.END
+            rightMargin = dp(16)
+
+            // 화면 중앙에 배치
+            val screenHeight = binding.previewContainer.height
+            topMargin = (screenHeight - sliderHeight) / 2
+        }
 
         container.layoutParams = lp
-
-        container.setOnClickListener {
-            rootFrame.removeView(container)
-            tapEvSlider = null
-        }
+        container.isClickable = true
+        container.isFocusable = true
 
         return container
     }
@@ -297,14 +403,21 @@ class MainActivity : AppCompatActivity() {
     // ---------------------------
     private var timerSec = 3
 
+    // ---------------------------
+// Timer
+// ---------------------------
     private fun toggleTimer() {
-        timerSec = when (timerSec) {
-            3 -> 5
-            5 -> 10
-            else -> 3
-        }
+        val mode = controller.cycleTimerMode()
+        updateTimerIcon(mode)
+    }
 
-        binding.btnTimer.setImageResource(R.drawable.ic_time_3s)
+    private fun updateTimerIcon(mode: Camera2Controller.TimerMode) {
+        val iconRes = when (mode) {
+            Camera2Controller.TimerMode.OFF -> R.drawable.btn_timer
+            Camera2Controller.TimerMode.SEC_3 -> R.drawable.ic_time_3s
+            Camera2Controller.TimerMode.SEC_10 -> R.drawable.ic_time_10s
+        }
+        binding.btnTimer.setImageResource(iconRes)
     }
 
     // ---------------------------
@@ -319,6 +432,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        controller.cancelTimer()
         controller.onPause()
         super.onPause()
     }

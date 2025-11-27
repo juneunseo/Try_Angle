@@ -11,9 +11,6 @@
         android:layout_height="match_parent"
         android:keepScreenOn="true">
 
-
-
-
         <TextureView
             android:id="@+id/textureView"
             android:layout_width="match_parent"
@@ -26,14 +23,27 @@
             android:clickable="true"
             android:focusable="true" />
 
-        <!-- previewContainer 안에 또는 바로 뒤에 추가 -->
+        <TextView
+            android:id="@+id/timerCountdownText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:textSize="120sp"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:shadowColor="#000000"
+            android:shadowDx="2"
+            android:shadowDy="2"
+            android:shadowRadius="8"
+            android:visibility="gone"
+            android:elevation="100dp" />
+
         <View
             android:id="@+id/blurOverlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="#CC000000"
             android:visibility="gone" />
-
 
     </FrameLayout>
 
@@ -80,10 +90,68 @@
         android:src="@drawable/options"
         android:padding="6dp"
         android:layout_marginEnd="24dp"
-        android:layout_marginBottom="160dp"
+        android:layout_marginBottom="180dp"
         android:elevation="30dp" />
 
-    <!-- ▼ UI 박스 (옵션바 + 하단바 + 메뉴) -->
+    <!-- ★ 옵션바 - 독립적으로 떠있음 -->
+    <LinearLayout
+        android:id="@+id/optionBar"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="180dp"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingHorizontal="24dp"
+        android:background="@drawable/pill_black_translucent_bg"
+        android:elevation="20dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/btnExp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="EXP"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp" />
+
+        <ImageButton
+            android:id="@+id/btnTimer"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@android:color/transparent"
+            app:srcCompat="@drawable/btn_timer"
+            android:layout_marginStart="24dp" />
+
+        <TextView
+            android:id="@+id/btnRatio"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="16:9"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:layout_marginStart="24dp" />
+
+        <ImageButton
+            android:id="@+id/btnFlash"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@android:color/transparent"
+            android:src="@drawable/ic_flash_off"
+            app:tint="#FFFFFF"
+            android:layout_marginStart="24dp" />
+
+        <ImageButton
+            android:id="@+id/btnCloseOption"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@android:color/transparent"
+            app:srcCompat="@drawable/ic_close"
+            android:layout_marginStart="24dp" />
+
+    </LinearLayout>
+
+    <!-- ▼ UI 박스 (하단바 + 메뉴) -->
     <LinearLayout
         android:id="@+id/uiContainer"
         android:orientation="vertical"
@@ -92,61 +160,6 @@
         android:layout_gravity="bottom"
         android:gravity="bottom"
         android:elevation="16dp">
-
-        <!-- ▼ 옵션바 -->
-        <LinearLayout
-            android:id="@+id/optionBar"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:padding="10dp"
-            android:background="@drawable/pill_black_translucent_bg"
-            android:visibility="gone">
-
-            <TextView
-                android:id="@+id/btnExp"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="EXP"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:layout_marginHorizontal="12dp" />
-
-            <ImageButton
-                android:id="@+id/btnTimer"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:background="@android:color/transparent"
-                app:srcCompat="@drawable/ic_time_3s"
-                android:layout_marginHorizontal="12dp" />
-
-            <TextView
-                android:id="@+id/btnRatio"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="1:1"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:layout_marginHorizontal="12dp" />
-
-            <ImageButton
-                android:id="@+id/btnFlash"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:background="@android:color/transparent"
-                android:src="@drawable/ic_flash"
-                app:tint="#FFFFFF"
-                android:layout_marginEnd="8dp" />
-
-            <ImageButton
-                android:id="@+id/btnCloseOption"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:background="@android:color/transparent"
-                app:srcCompat="@drawable/ic_close"
-                android:layout_marginHorizontal="12dp" />
-        </LinearLayout>
 
         <!-- ▼ 하단 바 -->
         <LinearLayout
