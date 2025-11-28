@@ -746,23 +746,18 @@ class Camera2Controller(
         when (aspectMode) {
             AspectMode.RATIO_1_1 -> {
                 val cropRatio = 1f
-                val scaleY = cropRatio / bufferRatio  // 0.75
+                val scaleY = cropRatio / bufferRatio
                 matrix.setScale(1f, scaleY, cx, cy)
             }
             AspectMode.RATIO_3_4 -> {
                 val cropRatio = 1f
-                val scaleY = cropRatio / bufferRatio  // 0.75 (1:1과 동일)
+                val scaleY = cropRatio / bufferRatio
                 matrix.setScale(1f, scaleY, cx, cy)
             }
             AspectMode.RATIO_9_16 -> {
-                // ★ 16:9는 센서 crop으로 인해 확대됨
-                // 1:1/4:3 대비 얼마나 확대되는지 계산
-                // 센서 4:3에서 16:9 crop → 세로가 (9/16) / (3/4) = 0.75배로 줄어듦
-                // 즉, 같은 세로 높이를 채우려면 1/0.75 = 1.333배 확대
+                // ✅ 전면/후면 동일한 로직 적용
                 val zoomFactor = (4f / 3f) / (16f / 9f)  // 0.75
                 val baseScaleY = bufferRatio / (16f / 9f)  // 0.75
-
-                // 최종: 확대 + 비율 보정
                 val scale = 1f / zoomFactor  // 1.333
                 matrix.setScale(scale, baseScaleY * scale, cx, cy)
             }
@@ -813,8 +808,6 @@ class Camera2Controller(
         }
         rectAnimator?.start()
     }
-
-
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
@@ -1243,6 +1236,10 @@ class Camera2Controller(
     fun cancelTimer() {
         timerHandler?.removeCallbacksAndMessages(null)
         timerHandler = null
+    }
+
+    fun isFrontCamera(): Boolean {
+        return lensFacing == CameraCharacteristics.LENS_FACING_FRONT
     }
 
 }

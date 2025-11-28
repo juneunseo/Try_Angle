@@ -30,10 +30,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var controller: Camera2Controller
     private lateinit var scaleDetector: ScaleGestureDetector
 
-    // ✅ AI 시스템 (OnnxInferenceManager → PoseEstimationService + RealtimeAnalyzer)
+    // ✅ AI 시스템
     private var poseEstimationService: PoseEstimationService? = null
     private var realtimeAnalyzer: RealtimeAnalyzer? = null
     private var isAIInitialized = false
+
+    // ✅ 레퍼런스 설정 여부
+    private var isReferenceSet = false
 
     // ✅ 레퍼런스 이미지
     private var referenceBitmap: Bitmap? = null
@@ -48,6 +51,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rootFrame: FrameLayout
     private var isAllAuto = true
     private var optionVisible = false
+
+    // ✅ 피드백 UI
+    private lateinit var feedbackStatusContainer: LinearLayout
+    private lateinit var feedbackMessageContainer: LinearLayout
+    private lateinit var feedbackMessage: TextView
+    private lateinit var feedbackIcon: ImageView
+    private lateinit var iconPose: ImageView
+    private lateinit var iconPosition: ImageView
+    private lateinit var iconFraming: ImageView
+    private lateinit var iconAngle: ImageView
+    private lateinit var iconComposition: ImageView
+    private lateinit var iconGaze: ImageView
 
     companion object {
         private const val REQUEST_REFERENCE_IMAGE = 2001
@@ -68,9 +83,52 @@ class MainActivity : AppCompatActivity() {
 
         initPinchZoom()
         initButtons()
+        initFeedbackUI()
         requestPermissionsIfNeeded()
 
         setAspectText(Camera2Controller.AspectMode.RATIO_9_16)
+    }
+
+    // ✅ 피드백 UI 초기화
+    private fun initFeedbackUI() {
+        feedbackStatusContainer = findViewById(R.id.feedbackStatusContainer)
+        feedbackMessageContainer = findViewById(R.id.feedbackMessageContainer)
+        feedbackMessage = findViewById(R.id.feedbackMessage)
+        feedbackIcon = findViewById(R.id.feedbackIcon)
+        iconPose = findViewById(R.id.iconPose)
+        iconPosition = findViewById(R.id.iconPosition)
+        iconFraming = findViewById(R.id.iconFraming)
+        iconAngle = findViewById(R.id.iconAngle)
+        iconComposition = findViewById(R.id.iconComposition)
+        iconGaze = findViewById(R.id.iconGaze)
+
+        // ✅ 초기에는 피드백 UI 숨김
+        hideFeedbackUI()
+    }
+
+    // ✅ 피드백 UI 숨기기
+    private fun hideFeedbackUI() {
+        feedbackStatusContainer.visibility = View.GONE
+        feedbackMessageContainer.visibility = View.GONE
+        // ✅ 옵션 버튼 다시 보이기
+        binding.btnOptions.visibility = View.VISIBLE
+    }
+
+    // ✅ 피드백 UI 보이기
+    private fun showFeedbackUI() {
+        feedbackStatusContainer.visibility = View.VISIBLE
+        // ✅ 분석 모드에서 옵션 버튼 숨기기
+        binding.btnOptions.visibility = View.GONE
+        // 옵션바가 열려있으면 닫기
+        if (optionVisible) {
+            binding.optionBar.visibility = View.GONE
+            optionVisible = false
+        }
+        // ✅ EV 슬라이더가 열려있으면 닫기
+        if (tapEvSlider != null) {
+            rootFrame.removeView(tapEvSlider)
+            tapEvSlider = null
+        }
     }
 
     // ✅ AI 시스템 초기화
@@ -83,11 +141,11 @@ class MainActivity : AppCompatActivity() {
 
                 val startTime = System.currentTimeMillis()
 
-                // 1. PoseEstimationService 초기화 (2-3초 소요)
+                // 1. PoseEstimationService 초기화
                 poseEstimationService = PoseEstimationService(applicationContext)
                 poseEstimationService?.initialize()
 
-                // 2. RealtimeAnalyzer 초기화 (✅ poseEstimationService 전달!)
+                // 2. RealtimeAnalyzer 초기화
                 realtimeAnalyzer = RealtimeAnalyzer(poseEstimationService!!)
 
                 val elapsed = System.currentTimeMillis() - startTime
@@ -99,7 +157,7 @@ class MainActivity : AppCompatActivity() {
                     println("========================================")
                     Toast.makeText(this, "✅ AI 시스템 준비 완료", Toast.LENGTH_SHORT).show()
 
-                    // ✅ 피드백 UI 업데이트 시작
+                    // ✅ 피드백 UI 업데이트 리스너 시작
                     startFeedbackUIUpdates()
                 }
 
@@ -138,7 +196,6 @@ class MainActivity : AppCompatActivity() {
             textureView = binding.textureView,
             onFrameLevelChanged = {},
             onSaved = { uri ->
-                // ✅ 촬영 완료 → 포즈 분석
                 val bitmap = uriToBitmap(uri)
                 if (bitmap != null) {
                     processCapturedPhoto(bitmap)
@@ -151,13 +208,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // ★ 타이머 카운트다운 콜백 설정
         controller.setTimerCountdownCallback { remaining ->
             runOnUiThread {
                 if (remaining > 0) {
                     binding.timerCountdownText.text = remaining.toString()
                     binding.timerCountdownText.visibility = View.VISIBLE
-                    // 애니메이션 효과
                     binding.timerCountdownText.scaleX = 1.5f
                     binding.timerCountdownText.scaleY = 1.5f
                     binding.timerCountdownText.alpha = 1f
@@ -178,7 +233,9 @@ class MainActivity : AppCompatActivity() {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 val source = android.graphics.ImageDecoder.createSource(contentResolver, uri)
-                android.graphics.ImageDecoder.decodeBitmap(source)
+                android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                    decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+                }
             } else {
                 @Suppress("DEPRECATION")
                 android.provider.MediaStore.Images.Media.getBitmap(contentResolver, uri)
@@ -250,7 +307,6 @@ class MainActivity : AppCompatActivity() {
             try {
                 println("📸 레퍼런스 이미지 분석 중...")
 
-                // URI → Bitmap
                 val bitmap = uriToBitmap(uri) ?: return@Thread
                 referenceBitmap = bitmap
 
@@ -261,15 +317,22 @@ class MainActivity : AppCompatActivity() {
                     return@Thread
                 }
 
-                // ✅ analyzeReference는 suspend 함수이므로 코루틴 사용
                 lifecycleScope.launch(Dispatchers.IO) {
                     realtimeAnalyzer?.analyzeReference(bitmap)
 
                     withContext(Dispatchers.Main) {
+                        // ✅ 레퍼런스 설정 완료
+                        isReferenceSet = true
+
                         Toast.makeText(this@MainActivity, "레퍼런스 포즈 설정 완료 ✅", Toast.LENGTH_SHORT).show()
+
+                        // ✅ 피드백 UI 표시
+                        showFeedbackUI()
 
                         // ✅ 실시간 분석 시작
                         startRealtimeAnalysis()
+
+                        println("✅ 레퍼런스 설정 완료, 분석 모드 시작")
                     }
                 }
 
@@ -283,8 +346,27 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    // ✅ 레퍼런스 초기화 (필요시 호출)
+    private fun clearReference() {
+        isReferenceSet = false
+        realtimeAnalyzer?.clearReference()
+        stopRealtimeAnalysis()
+        hideFeedbackUI()
+        referenceBitmap?.recycle()
+        referenceBitmap = null
+        println("🛑 레퍼런스 해제, 분석 모드 종료")
+    }
+
+
+
     // ✅ 실시간 포즈 분석 시작
     private fun startRealtimeAnalysis() {
+        // 레퍼런스가 설정되지 않았으면 시작하지 않음
+        if (!isReferenceSet) {
+            println("⚠️ 레퍼런스가 설정되지 않아 분석을 시작하지 않습니다")
+            return
+        }
+
         if (realtimeAnalysisJob?.isActive == true) {
             println("⚠️ 실시간 분석이 이미 실행 중입니다")
             return
@@ -297,32 +379,54 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val currentTime = System.currentTimeMillis()
 
-                    // 프레임 스킵 (30fps 유지)
                     if (currentTime - lastAnalysisTime < analysisIntervalMs) {
                         delay(10)
                         continue
                     }
                     lastAnalysisTime = currentTime
 
-                    // TextureView에서 Bitmap 추출
+                    // ✅ Main 스레드에서 안전하게 Bitmap 복사
                     val bitmap = withContext(Dispatchers.Main) {
-                        binding.textureView.bitmap
-                    } ?: continue
+                        try {
+                            val original = binding.textureView.bitmap
+                            if (original != null && !original.isRecycled && original.width > 0 && original.height > 0) {
+                                // ARGB_8888로 복사 (color space 문제 해결)
+                                Bitmap.createBitmap(original.width, original.height, Bitmap.Config.ARGB_8888).also { copy ->
+                                    val canvas = android.graphics.Canvas(copy)
+                                    canvas.drawBitmap(original, 0f, 0f, null)
+                                }
+                            } else {
+                                null
+                            }
+                        } catch (e: Exception) {
+                            println("⚠️ Bitmap 복사 실패: ${e.message}")
+                            null
+                        }
+                    }
 
-                    // ✅ analyzeFrame() 호출 (비-suspend 함수)
+                    if (bitmap == null) {
+                        delay(50)
+                        continue
+                    }
+
+                    val isFront = controller.isFrontCamera()
+
                     realtimeAnalyzer?.analyzeFrame(
                         bitmap = bitmap,
-                        isFrontCamera = false,  // TODO: 카메라 상태에 따라 변경
-                        currentAspectRatio = CameraAspectRatio.RATIO_16_9  // TODO: 현재 비율
+                        isFrontCamera = isFront,
+                        currentAspectRatio = CameraAspectRatio.RATIO_16_9
                     )
 
-                    // 메모리 정리
-                    bitmap.recycle()
+                    // 분석 완료 후 recycle
+                    if (!bitmap.isRecycled) {
+                        bitmap.recycle()
+                    }
 
                 } catch (e: Exception) {
                     if (e !is CancellationException) {
                         println("⚠️ 실시간 분석 오류: ${e.message}")
                     }
+                    delay(100)
                 }
             }
         }
@@ -335,34 +439,79 @@ class MainActivity : AppCompatActivity() {
         println("🛑 실시간 포즈 분석 중지")
     }
 
-    // ✅ 피드백 UI 업데이트
+    // ✅ 피드백 UI 업데이트 시작
     private fun startFeedbackUIUpdates() {
         lifecycleScope.launch {
-            // ✅ instantFeedback 사용!
             realtimeAnalyzer?.instantFeedback?.collectLatest { feedback ->
-                updateFeedbackUI(feedback)
+                // 레퍼런스가 설정된 경우에만 UI 업데이트
+                if (isReferenceSet) {
+                    updateFeedbackUI(feedback)
+                }
             }
         }
     }
 
+    // ✅ 피드백 UI 업데이트
     private fun updateFeedbackUI(feedback: List<FeedbackItem>) {
-        if (feedback.isEmpty()) {
-            // 피드백 없음 → UI 숨기기
-            binding.overlayView.visibility = View.VISIBLE  // overlayView는 항상 표시 (줌, EV 등)
-            return
+        runOnUiThread {
+            // 레퍼런스가 설정되지 않았으면 UI 숨김
+            if (!isReferenceSet) {
+                hideFeedbackUI()
+                return@runOnUiThread
+            }
+
+            feedbackStatusContainer.visibility = View.VISIBLE
+
+            if (feedback.isEmpty()) {
+                feedbackMessageContainer.visibility = View.GONE
+                setAllStatusGreen()
+            } else {
+                feedbackMessageContainer.visibility = View.VISIBLE
+                val topFeedback = feedback.first()
+                feedbackMessage.text = topFeedback.message
+                updateStatusIcons(feedback)
+                println("📢 피드백: [${topFeedback.category}] ${topFeedback.message}")
+            }
         }
+    }
 
-        // 가장 우선순위 높은 피드백 1개만 표시
-        val topFeedback = feedback.firstOrNull() ?: return
+    private fun setAllStatusGreen() {
+        val greenDrawable = resources.getDrawable(R.drawable.ic_select_checked, null)
+        iconPose.setImageDrawable(greenDrawable)
+        iconPosition.setImageDrawable(greenDrawable)
+        iconFraming.setImageDrawable(greenDrawable)
+        iconAngle.setImageDrawable(greenDrawable)
+        iconComposition.setImageDrawable(greenDrawable)
+        iconGaze.setImageDrawable(greenDrawable)
+    }
 
-        // TODO: 실제 UI 컴포넌트로 표시
-        // 현재는 임시로 로그 출력
-        println("📢 피드백: [${topFeedback.category}] ${topFeedback.message}")
+    private fun updateStatusIcons(feedback: List<FeedbackItem>) {
+        val greenDrawable = resources.getDrawable(R.drawable.ic_select_checked, null)
+        val grayDrawable = resources.getDrawable(R.drawable.ic_select_empty, null)
 
-        // 예시: Toast로 표시 (실제로는 Custom View 사용)
-        // runOnUiThread {
-        //     Toast.makeText(this, topFeedback.message, Toast.LENGTH_SHORT).show()
-        // }
+        // 기본값: 모두 녹색
+        iconPose.setImageDrawable(greenDrawable)
+        iconPosition.setImageDrawable(greenDrawable)
+        iconFraming.setImageDrawable(greenDrawable)
+        iconAngle.setImageDrawable(greenDrawable)
+        iconComposition.setImageDrawable(greenDrawable)
+        iconGaze.setImageDrawable(greenDrawable)
+
+        // 피드백이 있는 카테고리는 회색으로
+        for (fb in feedback) {
+            when {
+                fb.category.contains("pose") -> iconPose.setImageDrawable(grayDrawable)
+                fb.category.contains("position") || fb.category.contains("distance") -> iconPosition.setImageDrawable(grayDrawable)
+                fb.category.contains("framing") || fb.category.contains("headroom") -> iconFraming.setImageDrawable(grayDrawable)
+                fb.category.contains("angle") -> iconAngle.setImageDrawable(grayDrawable)
+                fb.category.contains("composition") -> iconComposition.setImageDrawable(grayDrawable)
+                fb.category.contains("gaze") || fb.category.contains("look") -> iconGaze.setImageDrawable(grayDrawable)
+                fb.category == "no_face" -> {
+                    iconPose.setImageDrawable(grayDrawable)
+                    iconPosition.setImageDrawable(grayDrawable)
+                }
+            }
+        }
     }
 
     // ---------------------------
@@ -391,12 +540,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // ✅ AI 시스템 리소스 정리
         stopRealtimeAnalysis()
         realtimeAnalyzer?.cleanup()
         poseEstimationService?.cleanup()
         referenceBitmap?.recycle()
         referenceBitmap = null
+        isReferenceSet = false
         println("🧹 MainActivity 정리 완료")
     }
 
@@ -404,26 +553,21 @@ class MainActivity : AppCompatActivity() {
     // 버튼들
     // ---------------------------
     private fun initButtons() {
-        // 촬영
         binding.btnShutter.setOnClickListener { controller.takePictureWithTimer() }
 
-        // 카메라 전환
         binding.btnSwitch.setOnClickListener {
             controller.switchCamera()
             controller.setFlashMode(Camera2Controller.FlashMode.OFF)
         }
 
-        // ★ 옵션 버튼
         binding.btnOptions.setOnClickListener {
             toggleOptionBar()
         }
 
-        // ★ 옵션 닫기
         binding.btnCloseOption.setOnClickListener {
             toggleOptionBar()
         }
 
-        // 플래시
         binding.btnFlash.setOnClickListener {
             val next = when (controller.getFlashMode()) {
                 Camera2Controller.FlashMode.OFF -> Camera2Controller.FlashMode.AUTO
@@ -442,24 +586,19 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        // EXP
         binding.btnExp.setOnClickListener {
             showTapEvSliderCenter()
         }
 
-        // Timer
         binding.btnTimer.setOnClickListener { toggleTimer() }
 
-        // ratio 변경
         binding.btnRatio.setOnClickListener { toggleAspectRatio() }
 
-        // 갤러리
         binding.menuGallery.setOnClickListener {
             val intent = Intent(this, GalleryActivity::class.java)
             startActivity(intent)
         }
 
-        // ✅ 레퍼런스 (이미지 선택 Activity 실행)
         binding.menuReference.setOnClickListener {
             val intent = Intent(this, com.example.camera2app.reference.ReferenceActivity::class.java)
             startActivityForResult(intent, REQUEST_REFERENCE_IMAGE)
@@ -470,6 +609,11 @@ class MainActivity : AppCompatActivity() {
     // EV 슬라이더
     // ---------------------------
     private fun showTapEvSliderCenter() {
+        // ✅ 분석 모드에서는 EV 슬라이더 열지 않음
+        if (isReferenceSet) {
+            return
+        }
+
         if (tapEvSlider != null) {
             rootFrame.removeView(tapEvSlider)
             tapEvSlider = null
@@ -483,6 +627,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTapEvSlider(x: Float, y: Float) {
+        // ✅ 분석 모드에서는 EV 슬라이더 열지 않음
+        if (isReferenceSet) {
+            return
+        }
+
         if (tapEvSlider != null) {
             rootFrame.removeView(tapEvSlider)
             tapEvSlider = null
@@ -538,7 +687,6 @@ class MainActivity : AppCompatActivity() {
         val trackHeight = sliderHeight - iconSize - (padding * 2)
         val iconGap = dp(8)
 
-        // 위쪽 라인
         val topLine = View(this).apply {
             setBackgroundColor(0xFFFFFFFF.toInt())
         }
@@ -548,7 +696,6 @@ class MainActivity : AppCompatActivity() {
         }
         container.addView(topLine, topLineLp)
 
-        // 아래쪽 라인
         val bottomLine = View(this).apply {
             setBackgroundColor(0xFFFFFFFF.toInt())
         }
@@ -558,7 +705,6 @@ class MainActivity : AppCompatActivity() {
         }
         container.addView(bottomLine, bottomLineLp)
 
-        // 태양 아이콘
         val sunIcon = ImageView(this).apply {
             setImageResource(R.drawable.clear_day)
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -583,7 +729,6 @@ class MainActivity : AppCompatActivity() {
 
         updateLines(sunLp.topMargin)
 
-        // SeekBar
         val seek = SeekBar(this).apply {
             max = 800
             progress = 400
@@ -655,8 +800,9 @@ class MainActivity : AppCompatActivity() {
         controller.setAllAuto()
         isAllAuto = true
 
-        // ✅ 실시간 분석 재시작 (레퍼런스가 설정되어 있으면)
-        if (realtimeAnalyzer?.referenceAnalysis != null && isAIInitialized) {
+        // ✅ 레퍼런스가 설정된 경우에만 분석 시작
+        if (isReferenceSet && isAIInitialized) {
+            showFeedbackUI()
             startRealtimeAnalysis()
         }
     }
@@ -664,10 +810,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         controller.cancelTimer()
         controller.onPause()
-
-        // ✅ 실시간 분석 일시 중지
         stopRealtimeAnalysis()
-
         super.onPause()
     }
 
@@ -712,10 +855,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleAspectRatio() {
-        // 블러 ON
         setPreviewBlur(true)
 
-        // 비율 전환
         val next = when (binding.btnRatio.text) {
             "1:1" -> "4:3"
             "4:3" -> "16:9"
@@ -724,7 +865,6 @@ class MainActivity : AppCompatActivity() {
         binding.btnRatio.text = next
         controller.setAspectRatio(next)
 
-        // 0.3초 후 블러 해제
         binding.textureView.postDelayed({
             setPreviewBlur(false)
         }, 300L)

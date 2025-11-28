@@ -656,4 +656,9 @@ class RealtimeAnalyzer(
     fun cleanup() {
         analysisScope.cancel()
     }
+
+    fun clearReference() {
+        referenceAnalysis = null
+        println("🗑️ 레퍼런스 분석 결과 초기화")
+    }
 }

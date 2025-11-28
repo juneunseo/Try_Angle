@@ -12,8 +12,8 @@ import kotlin.math.min
 // MARK: - RTMPose 결과 구조체
 
 data class RTMPoseResult(
-    val keypoints: List<KeypointWithConfidence>,  // 133개 키포인트
-    val boundingBox: RectF?                        // 인물 검출 박스
+    val keypoints: List<KeypointWithConfidence>,
+    val boundingBox: RectF?
 )
 
 data class KeypointWithConfidence(
@@ -49,33 +49,27 @@ class RTMPoseRunner(context: Context) {
         println("🔧 ONNX Runtime 초기화 시작...")
 
         try {
-            // 1. Environment 생성
             env = OrtEnvironment.getEnvironment()
             println("✅ Environment 생성 성공")
 
-            // 2. 모델 파일을 캐시 디렉토리로 복사
-            val detectorFile = copyAssetToCache(context, "yolox_int8.onnx")
-            val poseFile = copyAssetToCache(context, "rtmpose_int8.onnx")
+            val detectorFile = copyAssetToCache(context, "yolox.ort")
+            val poseFile = copyAssetToCache(context, "rtmpose.ort")
 
             println("✅ 모델 파일 준비 완료:")
             println("   Detector (YOLOX): ${detectorFile.absolutePath}")
             println("   Pose (RTMPose): ${poseFile.absolutePath}")
 
-            // 3. YOLOX용 Session Options (NNAPI 가속)
             val detectorOptions = OrtSession.SessionOptions().apply {
-                // NNAPI (Android Neural Networks API) 활성화
                 try {
                     addNnapi()
                     println("✅ YOLOX: NNAPI GPU 가속 활성화")
                 } catch (e: Exception) {
                     println("⚠️ YOLOX NNAPI 활성화 실패, CPU 폴백: ${e.message}")
                 }
-
                 setIntraOpNumThreads(6)
                 setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
             }
 
-            // 4. RTMPose용 Session Options (NNAPI 가속)
             val poseOptions = OrtSession.SessionOptions().apply {
                 try {
                     addNnapi()
@@ -83,14 +77,12 @@ class RTMPoseRunner(context: Context) {
                 } catch (e: Exception) {
                     println("⚠️ RTMPose NNAPI 활성화 실패, CPU 폴백: ${e.message}")
                 }
-
                 setIntraOpNumThreads(6)
                 setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
             }
 
             println("✅ 최대 성능 최적화 설정 완료 (YOLOX: NNAPI, RTMPose: NNAPI)")
 
-            // 5. 세션 생성
             println("📦 Detector 모델 로딩 중...")
             detectorSession = env!!.createSession(detectorFile.absolutePath, detectorOptions)
             println("✅ YOLOX Detector 로드 성공 (NNAPI)")
@@ -110,7 +102,6 @@ class RTMPoseRunner(context: Context) {
         }
     }
 
-    // Assets에서 캐시로 복사
     private fun copyAssetToCache(context: Context, assetName: String): java.io.File {
         val cacheFile = java.io.File(context.cacheDir, assetName)
         if (!cacheFile.exists()) {
@@ -134,17 +125,23 @@ class RTMPoseRunner(context: Context) {
             return null
         }
 
+        val workingBitmap = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
+            && bitmap.config == Bitmap.Config.HARDWARE) {
+            bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } else {
+            bitmap
+        }
+
         // 1. YOLOX로 사람 검출
-        val boundingBox = detectPerson(bitmap, detectorSession) ?: run {
-            // YOLOX가 사람을 검출하지 못하면 전체 이미지 사용
+        val boundingBox = detectPerson(workingBitmap, detectorSession) ?: run {
             println("⚠️ YOLOX: 사람을 검출하지 못함 → 전체 이미지로 포즈 추정 시도")
-            RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())
+            RectF(0f, 0f, workingBitmap.width.toFloat(), workingBitmap.height.toFloat())
         }
 
         println("✅ YOLOX: 사람 검출 - $boundingBox")
 
         // 2. 검출된 영역으로 포즈 추정
-        val keypoints = estimatePose(bitmap, boundingBox, poseSession) ?: run {
+        val keypoints = estimatePose(workingBitmap, boundingBox, poseSession) ?: run {
             println("❌ RTMPose: 포즈 추정 실패")
             return null
         }
@@ -156,26 +153,22 @@ class RTMPoseRunner(context: Context) {
     // MARK: - YOLOX 사람 검출
 
     private fun detectPerson(bitmap: Bitmap, session: OrtSession): RectF? {
-        // 640x640으로 리사이즈
         val (width, height) = detectorInputSize
         val resizedBitmap = Bitmap.createScaledBitmap(bitmap, width, height, true)
-
-        // 전처리
         val inputTensor = preprocessImageForDetector(resizedBitmap)
 
         try {
-            // 추론 실행
             val inputName = session.inputNames.iterator().next()
             val inputs = mapOf(inputName to inputTensor)
             val outputs = session.run(inputs)
 
-            val dets = outputs[0]  // dets: [1, num_boxes, 5]
-            val labels = outputs[1]  // labels: [1, num_boxes]
+            // ✅ 수정: OnnxValue에서 직접 데이터 추출
+            val detsValue = outputs[0]
+            val labelsValue = outputs[1]
 
-            // 출력 파싱
             return parseYOLOXOutput(
-                dets.value as OnnxTensor,
-                labels.value as OnnxTensor,
+                detsValue,
+                labelsValue,
                 bitmap.width.toFloat(),
                 bitmap.height.toFloat()
             )
@@ -184,6 +177,8 @@ class RTMPoseRunner(context: Context) {
             println("❌ YOLOX 추론 오류: ${e.message}")
             e.printStackTrace()
             return null
+        } finally {
+            inputTensor.close()
         }
     }
 
@@ -194,35 +189,26 @@ class RTMPoseRunner(context: Context) {
         boundingBox: RectF,
         session: OrtSession
     ): List<KeypointWithConfidence>? {
-        // 바운딩 박스 40% 확장 (손 포함)
         val expandedBox = expandBoundingBox(boundingBox, 0.4f, bitmap.width, bitmap.height)
-
-        // 크롭
         val croppedBitmap = cropBitmap(bitmap, expandedBox)
 
-        // 192x256으로 리사이즈
         val (width, height) = poseInputSize
         val resizedBitmap = Bitmap.createScaledBitmap(croppedBitmap, width, height, true)
-
-        // 전처리
         val inputTensor = preprocessImageForPose(resizedBitmap)
 
         try {
-            // 추론 실행
             val inputName = session.inputNames.iterator().next()
             val inputs = mapOf(inputName to inputTensor)
             val outputs = session.run(inputs)
 
-            // SimCC 출력 파싱
-            return parseRTMPoseSimCCOutput(
-                outputs,
-                expandedBox
-            )
+            return parseRTMPoseSimCCOutput(outputs, expandedBox)
 
         } catch (e: Exception) {
-            println("❌ RTMPose 추론 오류: ${e.message}")
+            println("❌ Pose detection error: ${e.message}")
             e.printStackTrace()
             return null
+        } finally {
+            inputTensor.close()
         }
     }
 
@@ -230,208 +216,272 @@ class RTMPoseRunner(context: Context) {
 
     private fun preprocessImageForDetector(bitmap: Bitmap): OnnxTensor {
         val (width, height) = detectorInputSize
-        val buffer = ByteBuffer.allocateDirect(1 * 3 * height * width * 4).apply {
-            order(ByteOrder.nativeOrder())
+
+        val resizedBitmap = if (bitmap.width != width || bitmap.height != height) {
+            Bitmap.createScaledBitmap(bitmap, width, height, true)
+        } else {
+            bitmap
         }
 
-        val floatBuffer = buffer.asFloatBuffer()
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        val workingBitmap = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
+            && resizedBitmap.config == Bitmap.Config.HARDWARE) {
+            resizedBitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } else {
+            resizedBitmap
+        }
 
-        // RGB 채널별 정규화
+        println("📐 최종 입력 크기: ${workingBitmap.width}x${workingBitmap.height}, config: ${workingBitmap.config}")
+
+        val floatArray = FloatArray(1 * 3 * height * width)
+        val pixels = IntArray(width * height)
+        workingBitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        var idx = 0
         for (c in 0 until 3) {
             for (y in 0 until height) {
                 for (x in 0 until width) {
-                    val idx = y * width + x
-                    val pixel = pixels[idx]
+                    val pixelIdx = y * width + x
+                    val pixel = pixels[pixelIdx]
 
                     val value = when (c) {
-                        0 -> ((pixel shr 16) and 0xFF) / 255f  // R
-                        1 -> ((pixel shr 8) and 0xFF) / 255f   // G
-                        else -> (pixel and 0xFF) / 255f        // B
+                        0 -> ((pixel shr 16) and 0xFF) / 255f
+                        1 -> ((pixel shr 8) and 0xFF) / 255f
+                        else -> (pixel and 0xFF) / 255f
                     }
 
-                    floatBuffer.put((value - mean[c]) / std[c])
+                    floatArray[idx++] = (value - mean[c]) / std[c]
                 }
             }
         }
 
         return OnnxTensor.createTensor(
             env,
-            buffer,
+            java.nio.FloatBuffer.wrap(floatArray),
             longArrayOf(1, 3, height.toLong(), width.toLong())
         )
     }
 
+    // ✅ 수정: FloatArray 방식으로 변경
     private fun preprocessImageForPose(bitmap: Bitmap): OnnxTensor {
-        val (width, height) = poseInputSize
-        val buffer = ByteBuffer.allocateDirect(1 * 3 * height * width * 4).apply {
-            order(ByteOrder.nativeOrder())
+        val (width, height) = poseInputSize  // 192, 256
+
+        val resizedBitmap = if (bitmap.width != width || bitmap.height != height) {
+            Bitmap.createScaledBitmap(bitmap, width, height, true)
+        } else {
+            bitmap
         }
 
-        val floatBuffer = buffer.asFloatBuffer()
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        val workingBitmap = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
+            && resizedBitmap.config == Bitmap.Config.HARDWARE) {
+            resizedBitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } else {
+            resizedBitmap
+        }
 
-        // RGB 채널별 정규화
+        val floatArray = FloatArray(1 * 3 * height * width)
+        val pixels = IntArray(width * height)
+        workingBitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        var idx = 0
         for (c in 0 until 3) {
             for (y in 0 until height) {
                 for (x in 0 until width) {
-                    val idx = y * width + x
-                    val pixel = pixels[idx]
+                    val pixelIdx = y * width + x
+                    val pixel = pixels[pixelIdx]
 
                     val value = when (c) {
-                        0 -> ((pixel shr 16) and 0xFF) / 255f  // R
-                        1 -> ((pixel shr 8) and 0xFF) / 255f   // G
-                        else -> (pixel and 0xFF) / 255f        // B
+                        0 -> ((pixel shr 16) and 0xFF) / 255f
+                        1 -> ((pixel shr 8) and 0xFF) / 255f
+                        else -> (pixel and 0xFF) / 255f
                     }
 
-                    floatBuffer.put((value - mean[c]) / std[c])
+                    floatArray[idx++] = (value - mean[c]) / std[c]
                 }
             }
         }
 
         return OnnxTensor.createTensor(
             env,
-            buffer,
+            java.nio.FloatBuffer.wrap(floatArray),
             longArrayOf(1, 3, height.toLong(), width.toLong())
         )
     }
 
     // MARK: - 출력 파싱
 
+    // ✅ 수정: OnnxValue에서 직접 배열 추출
     private fun parseYOLOXOutput(
-        dets: OnnxTensor,
-        labels: OnnxTensor,
+        detsValue: OnnxValue,
+        labelsValue: OnnxValue,
         imageWidth: Float,
         imageHeight: Float
     ): RectF? {
-        val detsBuffer = dets.floatBuffer
-        val labelsBuffer = labels.longBuffer
+        try {
+            // OnnxValue에서 배열 직접 추출
+            val detsArray = detsValue.value
+            val labelsArray = labelsValue.value
 
-        val shape = dets.info.shape
-        val numBoxes = shape[1].toInt()
+            // 3차원 배열: [1, num_boxes, 5]
+            val dets = when (detsArray) {
+                is Array<*> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    (detsArray as Array<Array<FloatArray>>)[0]
+                }
+                else -> {
+                    println("⚠️ YOLOX dets 타입 불명: ${detsArray?.javaClass}")
+                    return null
+                }
+            }
 
-        if (numBoxes == 0) {
-            println("⚠️ YOLOX: 검출된 박스 없음")
+            // 2차원 배열: [1, num_boxes]
+            val labels = when (labelsArray) {
+                is Array<*> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    (labelsArray as Array<LongArray>)[0]
+                }
+                else -> {
+                    println("⚠️ YOLOX labels 타입 불명: ${labelsArray?.javaClass}")
+                    return null
+                }
+            }
+
+            val numBoxes = dets.size
+            println("📦 YOLOX: ${numBoxes}개 박스 검출")
+
+            if (numBoxes == 0) {
+                return null
+            }
+
+            var bestBox: RectF? = null
+            var bestScore = 0.3f
+
+            val scaleX = imageWidth / detectorInputSize.first
+            val scaleY = imageHeight / detectorInputSize.second
+
+            for (i in 0 until numBoxes) {
+                val label = labels[i]
+                if (label != 0L) continue  // person class = 0
+
+                val box = dets[i]
+                val x1 = box[0] * scaleX
+                val y1 = box[1] * scaleY
+                val x2 = box[2] * scaleX
+                val y2 = box[3] * scaleY
+                val score = box[4]
+
+                if (score > bestScore) {
+                    bestBox = RectF(x1, y1, x2, y2)
+                    bestScore = score
+                }
+            }
+
+            if (bestBox != null) {
+                println("✅ YOLOX: 최고 점수 person 박스 - score: ${String.format("%.2f", bestScore)}")
+            }
+
+            return bestBox
+
+        } catch (e: Exception) {
+            println("❌ YOLOX 출력 파싱 오류: ${e.message}")
+            e.printStackTrace()
             return null
         }
-
-        var bestBox: RectF? = null
-        var bestScore = 0.3f  // 최소 임계값
-
-        val scaleX = imageWidth / detectorInputSize.first
-        val scaleY = imageHeight / detectorInputSize.second
-
-        for (i in 0 until numBoxes) {
-            val label = labelsBuffer.get(i)
-            if (label != 0L) continue  // person class = 0
-
-            val offset = i * 5
-            val x1 = detsBuffer.get(offset + 0) * scaleX
-            val y1 = detsBuffer.get(offset + 1) * scaleY
-            val x2 = detsBuffer.get(offset + 2) * scaleX
-            val y2 = detsBuffer.get(offset + 3) * scaleY
-            val score = detsBuffer.get(offset + 4)
-
-            if (score > bestScore) {
-                bestBox = RectF(x1, y1, x2, y2)
-                bestScore = score
-            }
-        }
-
-        return bestBox
     }
 
     private fun parseRTMPoseSimCCOutput(
         outputs: OrtSession.Result,
         boundingBox: RectF
     ): List<KeypointWithConfidence>? {
-        // SimCC 출력: simcc_x [1, 133, 384], simcc_y [1, 133, 512]
-        val simccX = outputs[0].value as? OnnxTensor ?: return null
-        val simccY = outputs[1].value as? OnnxTensor ?: return null
+        try {
+            val simccXValue = outputs[0].value
+            val simccYValue = outputs[1].value
 
-        val xBuffer = simccX.floatBuffer
-        val yBuffer = simccY.floatBuffer
+            // 3차원 배열: [1, 133, bins]
+            val simccX = when (simccXValue) {
+                is Array<*> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    (simccXValue as Array<Array<FloatArray>>)[0]
+                }
+                else -> {
+                    println("⚠️ simcc_x 타입 불명: ${simccXValue?.javaClass}")
+                    return null
+                }
+            }
 
-        val xShape = simccX.info.shape
-        val yShape = simccY.info.shape
+            val simccY = when (simccYValue) {
+                is Array<*> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    (simccYValue as Array<Array<FloatArray>>)[0]
+                }
+                else -> {
+                    println("⚠️ simcc_y 타입 불명: ${simccYValue?.javaClass}")
+                    return null
+                }
+            }
 
-        val numKeypoints = xShape[1].toInt()
-        val xBins = xShape[2].toInt()  // 384
-        val yBins = yShape[2].toInt()  // 512
+            val numKeypoints = simccX.size
+            val xBins = simccX[0].size
+            val yBins = simccY[0].size
 
-        if (numKeypoints != 133) {
-            println("⚠️ 예상치 못한 키포인트 수: $numKeypoints")
+            println("📊 RTMPose 출력: ${numKeypoints}개 키포인트, xBins=$xBins, yBins=$yBins")
+
+            if (numKeypoints != 133) {
+                println("⚠️ 예상치 못한 키포인트 수: $numKeypoints")
+            }
+
+            val keypoints = mutableListOf<KeypointWithConfidence>()
+            val (poseWidth, poseHeight) = poseInputSize
+
+            for (i in 0 until numKeypoints) {
+                val xArray = simccX[i]
+                val yArray = simccY[i]
+
+                // X: argmax
+                var maxXIdx = 0
+                var maxXVal = Float.NEGATIVE_INFINITY
+                for (j in xArray.indices) {
+                    if (xArray[j] > maxXVal) {
+                        maxXVal = xArray[j]
+                        maxXIdx = j
+                    }
+                }
+
+                // Y: argmax
+                var maxYIdx = 0
+                var maxYVal = Float.NEGATIVE_INFINITY
+                for (j in yArray.indices) {
+                    if (yArray[j] > maxYVal) {
+                        maxYVal = yArray[j]
+                        maxYIdx = j
+                    }
+                }
+
+                val xNorm = (maxXIdx.toFloat() / xBins) * poseWidth
+                val yNorm = (maxYIdx.toFloat() / yBins) * poseHeight
+
+                val x = boundingBox.left + (xNorm / poseWidth) * boundingBox.width()
+                val y = boundingBox.top + (yNorm / poseHeight) * boundingBox.height()
+
+                val confidence = (maxXVal + maxYVal) / 2f
+
+                keypoints.add(KeypointWithConfidence(x, y, confidence))
+            }
+
+            // 손 인식 통계
+            if (keypoints.size >= 133) {
+                val leftHandAvg = (91..111).map { keypoints[it].confidence }.average().toFloat()
+                val rightHandAvg = (112..132).map { keypoints[it].confidence }.average().toFloat()
+
+                println("📊 손 인식 평균 신뢰도 - 왼손: ${String.format("%.2f", leftHandAvg)}, 오른손: ${String.format("%.2f", rightHandAvg)}")
+            }
+
+            return keypoints
+
+        } catch (e: Exception) {
+            println("❌ RTMPose 출력 파싱 오류: ${e.message}")
+            e.printStackTrace()
             return null
         }
-
-        val keypoints = mutableListOf<KeypointWithConfidence>()
-        val (poseWidth, poseHeight) = poseInputSize
-
-        for (i in 0 until numKeypoints) {
-            // X 좌표: argmax
-            val xOffset = i * xBins
-            var maxXIdx = 0
-            var maxXVal = Float.NEGATIVE_INFINITY
-            for (j in 0 until xBins) {
-                val value = xBuffer.get(xOffset + j)
-                if (value > maxXVal) {
-                    maxXVal = value
-                    maxXIdx = j
-                }
-            }
-
-            // Y 좌표: argmax
-            val yOffset = i * yBins
-            var maxYIdx = 0
-            var maxYVal = Float.NEGATIVE_INFINITY
-            for (j in 0 until yBins) {
-                val value = yBuffer.get(yOffset + j)
-                if (value > maxYVal) {
-                    maxYVal = value
-                    maxYIdx = j
-                }
-            }
-
-            // SimCC 좌표를 픽셀 좌표로 변환
-            val xNorm = (maxXIdx.toFloat() / xBins) * poseWidth
-            val yNorm = (maxYIdx.toFloat() / yBins) * poseHeight
-
-            // 바운딩 박스 기준으로 변환
-            val x = boundingBox.left + (xNorm / poseWidth) * boundingBox.width()
-            val y = boundingBox.top + (yNorm / poseHeight) * boundingBox.height()
-
-            // 신뢰도: 두 확률의 평균
-            val confidence = (maxXVal + maxYVal) / 2f
-
-            keypoints.add(KeypointWithConfidence(x, y, confidence))
-
-            // 손 키포인트 디버그 (91-132번)
-            if (i in 91..132 && confidence < 0.3f) {
-                val handName = if (i <= 111) "왼손" else "오른손"
-                val keypointIndex = if (i <= 111) i - 91 else i - 112
-                if (keypointIndex % 5 == 0) {
-                    println("⚠️ $handName 키포인트 $keypointIndex: 신뢰도 낮음 (${String.format("%.2f", confidence)})")
-                }
-            }
-        }
-
-        // 손 키포인트 요약 통계
-        val leftHandConfidences = (91..111).map { keypoints[it].confidence }
-        val rightHandConfidences = (112..132).map { keypoints[it].confidence }
-
-        val leftHandAvg = leftHandConfidences.average().toFloat()
-        val rightHandAvg = rightHandConfidences.average().toFloat()
-
-        if (leftHandAvg < 0.5f || rightHandAvg < 0.5f) {
-            println("📊 손 인식 평균 신뢰도 - 왼손: ${String.format("%.2f", leftHandAvg)}, 오른손: ${String.format("%.2f", rightHandAvg)}")
-            if (leftHandAvg < 0.3f || rightHandAvg < 0.3f) {
-                println("💡 손이 화면에서 잘렸거나 가려졌을 수 있습니다. 전체 신체가 프레임 안에 들어오도록 조정해보세요.")
-            }
-        }
-
-        return keypoints
     }
 
     // MARK: - Helper Functions
@@ -449,7 +499,6 @@ class RTMPoseRunner(context: Context) {
             box.bottom + box.height() * padding
         )
 
-        // 이미지 경계 내로 제한
         return RectF(
             max(0f, expandedBox.left),
             max(0f, expandedBox.top),
@@ -467,10 +516,6 @@ class RTMPoseRunner(context: Context) {
         return Bitmap.createBitmap(bitmap, x, y, width, height)
     }
 
-    /**
-     * ONNX Runtime 세션 정리
-     * Activity onDestroy()에서 호출
-     */
     fun close() {
         try {
             detectorSession?.close()
@@ -489,9 +534,8 @@ class RTMPoseRunner(context: Context) {
     }
 }
 
-// Keypoint indices (COCO 17 keypoints)
+// Keypoint indices
 object KeypointIndex {
-    // Body (0-16): COCO 17 keypoints
     const val NOSE = 0
     const val LEFT_EYE = 1
     const val RIGHT_EYE = 2
@@ -510,17 +554,14 @@ object KeypointIndex {
     const val LEFT_ANKLE = 15
     const val RIGHT_ANKLE = 16
 
-    // Face (17-84): 68 facial landmarks
     const val FACE_START = 17
     const val FACE_END = 84
 
-    // Hands (85-126): 21 keypoints per hand
     const val LEFT_HAND_START = 85
     const val LEFT_HAND_END = 105
     const val RIGHT_HAND_START = 106
     const val RIGHT_HAND_END = 126
 
-    // Feet (127-132): 3 keypoints per foot
     const val LEFT_FOOT_START = 127
     const val RIGHT_FOOT_START = 130
 }

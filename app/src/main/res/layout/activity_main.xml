@@ -42,7 +42,7 @@
             android:id="@+id/blurOverlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#CC000000"
+            android:background="#88000000"
             android:visibility="gone" />
 
     </FrameLayout>
@@ -55,7 +55,7 @@
         android:layout_gravity="top"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="#CC000000"
+        android:background="#88000000"
         android:paddingStart="12dp"
         android:paddingEnd="12dp"
         android:elevation="8dp">
@@ -168,7 +168,7 @@
             android:layout_height="100dp"
             android:orientation="horizontal"
             android:gravity="center"
-            android:background="#CC000000"
+            android:background="#88000000"
             android:paddingHorizontal="24dp">
 
             <View
@@ -205,7 +205,7 @@
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:gravity="center"
-            android:background="#CC000000"
+            android:background="#88000000"
             android:orientation="horizontal"
             android:paddingTop="8dp"
             android:paddingBottom="12dp">
@@ -251,5 +251,177 @@
         android:background="#FFFFFF"
         android:alpha="0"
         android:clickable="false" />
+
+
+
+    <!-- ▼ 피드백 상태 표시 (왼쪽) -->
+    <LinearLayout
+        android:id="@+id/feedbackStatusContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|center_vertical"
+        android:layout_marginStart="16dp"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:background="@drawable/rounded_rect_black_translucent"
+        android:elevation="20dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/statusPose"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="포즈"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+            <ImageView
+                android:id="@+id/iconPose"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_checked" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/statusPosition"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="인물 위치"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+            <ImageView
+                android:id="@+id/iconPosition"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_checked" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/statusFraming"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="프레이밍"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+            <ImageView
+                android:id="@+id/iconFraming"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_empty" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/statusAngle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="카메라 앵글"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+            <ImageView
+                android:id="@+id/iconAngle"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_checked" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/statusComposition"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="구도"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+            <ImageView
+                android:id="@+id/iconComposition"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_checked" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/statusGaze"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="시선"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+            <ImageView
+                android:id="@+id/iconGaze"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_empty" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ▼ 피드백 메시지 (하단) -->
+    <LinearLayout
+        android:id="@+id/feedbackMessageContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="220dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="12dp"
+        android:background="@drawable/pill_black_translucent_bg"
+        android:elevation="20dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/feedbackIcon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_person" />
+
+        <TextView
+            android:id="@+id/feedbackMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="얼굴을 화면에 보여주세요"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp" />
+    </LinearLayout>
 
 </FrameLayout>
