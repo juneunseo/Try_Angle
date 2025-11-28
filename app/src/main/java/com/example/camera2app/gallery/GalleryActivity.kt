@@ -3,6 +3,7 @@ package com.example.camera2app.gallery
 import android.Manifest
 import android.content.ContentUris
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,9 +14,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.example.camera2app.databinding.ActivityGalleryBinding
 import com.example.camera2app.databinding.ActivityGallerySelectableBinding
-import com.example.camera2app.util.RecyclerItemClickListener
 
 class GalleryActivity : ComponentActivity() {
 
@@ -46,6 +47,13 @@ class GalleryActivity : ComponentActivity() {
 
         normalBinding.photoGrid.apply {
             layoutManager = GridLayoutManager(this@GalleryActivity, 3)
+
+            // 기존 ItemDecoration 제거 후 새로 추가
+            while (itemDecorationCount > 0) {
+                removeItemDecorationAt(0)
+            }
+            addItemDecoration(GridSpacingItemDecoration(3, dpToPx(1), false))
+
             adapter = PhotoAdapter(this@GalleryActivity, photos) { pos ->
                 // ★ 롱클릭 시 선택 모드 진입
                 enterSelectMode(pos)
@@ -53,8 +61,6 @@ class GalleryActivity : ComponentActivity() {
         }
 
         normalBinding.btnClose.setOnClickListener { finish() }
-
-        // ★ RecyclerItemClickListener 제거
     }
 
     // ---------------------- Select Mode ----------------------
@@ -71,6 +77,13 @@ class GalleryActivity : ComponentActivity() {
     private fun setupSelectUI() {
         selectBinding.photoGridSelectable.apply {
             layoutManager = GridLayoutManager(this@GalleryActivity, 3)
+
+            // 기존 ItemDecoration 제거 후 새로 추가
+            while (itemDecorationCount > 0) {
+                removeItemDecorationAt(0)
+            }
+            addItemDecoration(GridSpacingItemDecoration(3, dpToPx(1), false))
+
             adapter = PhotoSelectableAdapter(photos, selectedPhotos) {
                 updateBottomMenu()
             }
@@ -149,6 +162,45 @@ class GalleryActivity : ComponentActivity() {
         } else {
             setContentView(normalBinding.root)
             setupNormalUI()
+        }
+    }
+
+    // ---------------------- Utility ----------------------
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    // ---------------------- Grid Spacing ItemDecoration ----------------------
+    class GridSpacingItemDecoration(
+        private val spanCount: Int,
+        private val spacing: Int,
+        private val includeEdge: Boolean
+    ) : RecyclerView.ItemDecoration() {
+
+        override fun getItemOffsets(
+            outRect: Rect,
+            view: View,
+            parent: RecyclerView,
+            state: RecyclerView.State
+        ) {
+            val position = parent.getChildAdapterPosition(view)
+            val column = position % spanCount
+
+            if (includeEdge) {
+                outRect.left = spacing - column * spacing / spanCount
+                outRect.right = (column + 1) * spacing / spanCount
+
+                if (position < spanCount) {
+                    outRect.top = spacing
+                }
+                outRect.bottom = spacing
+            } else {
+                outRect.left = column * spacing / spanCount
+                outRect.right = spacing - (column + 1) * spacing / spanCount
+                if (position >= spanCount) {
+                    outRect.top = spacing
+                }
+            }
         }
     }
 }

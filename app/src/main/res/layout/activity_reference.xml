@@ -54,14 +54,9 @@
             android:gravity="center_vertical"/>
     </LinearLayout>
 
+
+
 </FrameLayout>
-
-
-
-
-
-
-
 
     <!-- 카테고리 탭 -->
     <HorizontalScrollView

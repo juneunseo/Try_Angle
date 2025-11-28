@@ -18,5 +18,5 @@
         android:layout_height="24dp"
         android:layout_gravity="bottom|end"
         android:layout_margin="8dp"
-        android:src="@drawable/favorite"/>
+        android:src="@drawable/ic_heart_empty"/>
 </FrameLayout>

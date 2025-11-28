@@ -1,9 +1,12 @@
 package com.example.camera2app
 
+
+import android.net.Uri
 import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.graphics.Bitmap
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -16,11 +19,18 @@ import com.example.camera2app.gallery.GalleryActivity
 import com.example.camera2app.util.Permissions
 import java.util.Locale
 
+import com.example.camera2app.ai.OnnxInferenceManager
+import com.example.camera2app.ai.BoundingBox
+import com.example.camera2app.ai.Keypoint
+
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var controller: Camera2Controller
     private lateinit var scaleDetector: ScaleGestureDetector
+    private var onnxManager: OnnxInferenceManager? = null
+    private var isModelLoaded = false
+
 
     // EV 슬라이더
     private var tapEvSlider: View? = null
@@ -36,6 +46,9 @@ class MainActivity : AppCompatActivity() {
 
         applyWindowInset()
         initCameraController()
+
+        initOnnxManager()
+
         initPinchZoom()
         initButtons()
         requestPermissionsIfNeeded()
@@ -43,6 +56,26 @@ class MainActivity : AppCompatActivity() {
         setAspectText(Camera2Controller.AspectMode.RATIO_9_16)
 
 
+    }
+
+    private fun initOnnxManager() {
+        // 백그라운드 스레드에서 초기화
+        Thread {
+            try {
+                onnxManager = OnnxInferenceManager(this)
+                onnxManager?.initialize()
+                isModelLoaded = true
+
+                runOnUiThread {
+                    Toast.makeText(this, "✅ AI 모델 로드 완료", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                runOnUiThread {
+                    Toast.makeText(this, "❌ AI 모델 로드 실패", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
     }
 
     // ---------------------------
@@ -70,7 +103,13 @@ class MainActivity : AppCompatActivity() {
             overlayView = binding.overlayView,
             textureView = binding.textureView,
             onFrameLevelChanged = {},
-            onSaved = {},
+            onSaved = { uri ->  // ✅ bitmap → uri로 변경
+                // Uri를 Bitmap으로 변환 후 포즈 분석
+                val bitmap = uriToBitmap(uri)
+                if (bitmap != null) {
+                    processPoseEstimation(bitmap)
+                }
+            },
             previewContainer = binding.previewContainer
         ) { fps ->
             runOnUiThread {
@@ -101,6 +140,60 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun uriToBitmap(uri: Uri): Bitmap? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val source = android.graphics.ImageDecoder.createSource(contentResolver, uri)
+                android.graphics.ImageDecoder.decodeBitmap(source)
+            } else {
+                @Suppress("DEPRECATION")
+                android.provider.MediaStore.Images.Media.getBitmap(contentResolver, uri)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun processPoseEstimation(bitmap: Bitmap) {
+        // 모델이 로드되지 않았으면 알림
+        if (!isModelLoaded || onnxManager == null) {
+            runOnUiThread {
+                Toast.makeText(this, "AI 모델 로딩 중... 잠시 후 다시 시도하세요", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        // 백그라운드 스레드에서 실행
+        Thread {
+            try {
+                val manager = onnxManager ?: return@Thread
+
+                // 1. 사람 탐지
+                val persons = manager.detectPersons(bitmap)
+
+                // 2. 각 사람마다 포즈 추정
+                persons.forEach { bbox ->
+                    val keypoints = manager.estimatePose(bitmap, bbox)
+
+                    // UI 업데이트는 메인 스레드에서
+                    runOnUiThread {
+                        Toast.makeText(
+                            this,
+                            "포즈 감지: ${keypoints.size}개 키포인트",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                runOnUiThread {
+                    Toast.makeText(this, "포즈 분석 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
+    }
+
     // ---------------------------
     // Pinch zoom
     // ---------------------------
@@ -123,6 +216,13 @@ class MainActivity : AppCompatActivity() {
             }
             true
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // nullable이므로 체크 방식 변경
+        onnxManager?.release()
+        onnxManager = null
     }
 
     // ---------------------------

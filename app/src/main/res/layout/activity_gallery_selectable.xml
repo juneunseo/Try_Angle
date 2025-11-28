@@ -85,7 +85,7 @@
             android:id="@+id/btnFav"
             android:layout_width="32dp"
             android:layout_height="32dp"
-            android:src="@drawable/favorite"
+            android:src="@drawable/ic_heart_empty"
             app:tint="#000000" />
 
         <View android:layout_width="20dp" android:layout_height="0dp" />

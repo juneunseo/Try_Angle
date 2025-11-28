@@ -13,10 +13,14 @@ class ReferenceActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_reference)
 
+        // ★ LikeManager 초기화
+        LikeManager.init(this)
+
         setupCategoryTabs()
 
+        // 기본 탭을 My로 변경 (또는 원하는 탭)
         supportFragmentManager.beginTransaction()
-            .replace(R.id.referenceContainer, ReferenceFragment.newInstance(ReferenceCategory.CAFE))
+            .replace(R.id.referenceContainer, ReferenceFragment.newInstance(ReferenceCategory.MY))
             .commit()
     }
 
@@ -24,7 +28,6 @@ class ReferenceActivity : AppCompatActivity() {
         val container = findViewById<LinearLayout>(R.id.categoryBar)
 
         ReferenceCategory.values().forEach { cat ->
-
             val tv = TextView(this).apply {
                 text = cat.title
                 setPadding(20, 10, 20, 10)
@@ -37,7 +40,6 @@ class ReferenceActivity : AppCompatActivity() {
                         .commit()
                 }
             }
-
             container.addView(tv)
         }
     }

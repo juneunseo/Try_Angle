@@ -51,6 +51,8 @@ dependencies {
 
     implementation ("com.github.bumptech.glide:glide:4.16.0")
     kapt ("com.github.bumptech.glide:compiler:4.16.0")
-    // desugaring 켰다면 같이 추가
-    // coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+
+    // ONNX Runtime for Android
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
+
 }

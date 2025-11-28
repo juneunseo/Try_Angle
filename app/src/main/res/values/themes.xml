@@ -5,6 +5,9 @@
         <item name="android:fitsSystemWindows">false</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
+        <!-- ★ 앱 전체 폰트 적용 -->
+        <item name="android:fontFamily">@font/gmarket_sans</item>
+        <item name="fontFamily">@font/gmarket_sans</item>
     </style>
 
 </resources>

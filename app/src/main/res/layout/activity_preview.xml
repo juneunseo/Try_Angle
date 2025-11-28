@@ -77,7 +77,7 @@
             android:layout_width="28dp"
             android:layout_height="28dp"
             android:layout_weight="1"
-            android:src="@drawable/favorite"/>
+            android:src="@drawable/ic_heart_empty"/>
 
         <ImageView
             android:id="@+id/btnEdit"
