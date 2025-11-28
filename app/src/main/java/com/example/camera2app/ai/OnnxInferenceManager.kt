@@ -2,6 +2,7 @@ package com.example.camera2app.ai
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Color
 import ai.onnxruntime.*
 import java.io.File
 import java.nio.FloatBuffer
@@ -12,8 +13,13 @@ data class Keypoint(val x: Float, val y: Float, val confidence: Float)
 class OnnxInferenceManager(private val context: Context) {
 
     private var ortEnvironment: OrtEnvironment? = null
-    private var detectionSession: OrtSession? = null
     private var poseSession: OrtSession? = null
+
+    // RTMPose 전처리 상수
+    private val POSE_WIDTH = 384
+    private val POSE_HEIGHT = 288
+    private val MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
+    private val STD = floatArrayOf(0.229f, 0.224f, 0.225f)
 
     fun initialize() {
         try {
@@ -21,20 +27,13 @@ class OnnxInferenceManager(private val context: Context) {
             ortEnvironment = OrtEnvironment.getEnvironment()
             println("✅ 1. OrtEnvironment 생성 완료")
 
-            // ✅ 파일을 캐시로 복사
-            println("🔵 2. 모델 파일 준비 중...")
-            val yoloxFile = copyAssetToCache("yolox.ort")
+            println("🔵 2. RTMPose 모델 파일 준비 중...")
             val rtmposeFile = copyAssetToCache("rtmpose.ort")
-            println("✅ 2. 모델 파일 준비 완료")
+            println("✅ 2. RTMPose 모델 파일 준비 완료")
 
-            // ✅ 파일 경로로 세션 생성 (메모리 절약!)
-            println("🔵 3. YOLOX 세션 생성 시작")
-            detectionSession = ortEnvironment?.createSession(yoloxFile.absolutePath)
-            println("✅ 3. YOLOX 세션 생성 완료")
-
-            println("🔵 4. RTMPose 세션 생성 시작")
+            println("🔵 3. RTMPose 세션 생성 시작")
             poseSession = ortEnvironment?.createSession(rtmposeFile.absolutePath)
-            println("✅ 4. RTMPose 세션 생성 완료")
+            println("✅ 3. RTMPose 세션 생성 완료")
 
             println("✅✅✅ ONNX 모델 로드 성공")
         } catch (e: Exception) {
@@ -45,7 +44,6 @@ class OnnxInferenceManager(private val context: Context) {
         }
     }
 
-    // ✅ assets → 캐시로 복사 (처음 한 번만)
     private fun copyAssetToCache(fileName: String): File {
         val cacheFile = File(context.cacheDir, fileName)
 
@@ -55,7 +53,7 @@ class OnnxInferenceManager(private val context: Context) {
 
             context.assets.open(fileName).use { input ->
                 cacheFile.outputStream().use { output ->
-                    val buffer = ByteArray(1024 * 1024)  // 1MB 버퍼 (더 빠름)
+                    val buffer = ByteArray(1024 * 1024)
                     var bytesRead: Int
                     var totalRead = 0L
 
@@ -63,7 +61,6 @@ class OnnxInferenceManager(private val context: Context) {
                         output.write(buffer, 0, bytesRead)
                         totalRead += bytesRead
 
-                        // 50MB마다 진행 상황 출력
                         if (totalRead % (50 * 1024 * 1024) == 0L) {
                             println("📊 ${totalRead / 1024 / 1024}MB 복사 완료")
                         }
@@ -72,7 +69,7 @@ class OnnxInferenceManager(private val context: Context) {
             }
 
             val elapsed = (System.currentTimeMillis() - startTime) / 1000.0
-            println("✅ $fileName 복사 완료 (${String.format("%.1f", elapsed)}초)")
+            println("✅ $fileName 복사 완료 (${String.format(java.util.Locale.US, "%.1f", elapsed)}초)")
         } else {
             println("✅ $fileName 캐시 사용 (복사 건너뜀)")
         }
@@ -80,99 +77,120 @@ class OnnxInferenceManager(private val context: Context) {
         return cacheFile
     }
 
-    fun detectPersons(bitmap: Bitmap): List<BoundingBox> {
-        val session = detectionSession ?: return emptyList()
-
-        // 1. Bitmap → 640x640 리사이즈
-        val resized = Bitmap.createScaledBitmap(bitmap, 640, 640, true)
-
-        // 2. 전처리: RGB → Float 배열 정규화
-        val inputTensor = preprocessImage(resized, 640, 640)
-
-        // 3. 추론 실행
-        val output = session.run(mapOf("images" to inputTensor))
-
-        // 4. 후처리 (TODO: 실제 구현 필요)
-        val result = postprocessDetection(output)
-
-        inputTensor.close()
-        output.close()
-
-        return result
-    }
-
-    fun estimatePose(bitmap: Bitmap, bbox: BoundingBox): List<Keypoint> {
+    // ✅ 단순화: YOLOX 없이 전체 이미지에서 포즈 추정
+    fun detectPose(bitmap: Bitmap): List<Keypoint> {
         val session = poseSession ?: return emptyList()
 
-        // 1. Bounding box 영역 크롭
-        val cropped = cropBitmap(bitmap, bbox)
+        try {
+            // 1. 이미지 전처리 (384x288, mean/std 정규화)
+            val inputTensor = preprocessImageForPose(bitmap)
 
-        // 2. 256x192 리사이즈
-        val resized = Bitmap.createScaledBitmap(cropped, 192, 256, true)
+            // 2. 추론 실행
+            val output = session.run(mapOf("input" to inputTensor))
 
-        // 3. 전처리
-        val inputTensor = preprocessImage(resized, 192, 256)
+            // 3. 후처리: simcc_x, simcc_y → 키포인트 좌표
+            val keypoints = postprocessPose(output)
 
-        // 4. 추론 실행
-        val output = session.run(mapOf("input" to inputTensor))
+            // 4. 리소스 정리
+            inputTensor.close()
+            output.close()
 
-        // 5. 후처리 (TODO: 실제 구현 필요)
-        val result = postprocessPose(output)
-
-        inputTensor.close()
-        output.close()
-        cropped.recycle()
-
-        return result
+            return keypoints
+        } catch (e: Exception) {
+            println("❌ 포즈 추정 실패: ${e.message}")
+            e.printStackTrace()
+            return emptyList()
+        }
     }
 
-    private fun preprocessImage(bitmap: Bitmap, width: Int, height: Int): OnnxTensor {
-        val floatBuffer = FloatBuffer.allocate(3 * width * height)
+    // ✅ RTMPose 전처리 (문서 기반)
+    private fun preprocessImageForPose(bitmap: Bitmap): OnnxTensor {
+        // 1. 리사이즈: 384x288
+        val resized = Bitmap.createScaledBitmap(bitmap, POSE_WIDTH, POSE_HEIGHT, true)
 
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val pixel = bitmap.getPixel(x, y)
-                val r = ((pixel shr 16) and 0xFF) / 255.0f
-                val g = ((pixel shr 8) and 0xFF) / 255.0f
-                val b = (pixel and 0xFF) / 255.0f
+        // 2. RGB → Float 배열 (NCHW 순서: [1, 3, 288, 384])
+        val floatBuffer = FloatBuffer.allocate(1 * 3 * POSE_HEIGHT * POSE_WIDTH)
 
-                floatBuffer.put(r)
-                floatBuffer.put(g)
-                floatBuffer.put(b)
+        for (c in 0..2) {  // 채널: R, G, B
+            for (h in 0 until POSE_HEIGHT) {
+                for (w in 0 until POSE_WIDTH) {
+                    val pixel = resized.getPixel(w, h)
+                    val value = when (c) {
+                        0 -> Color.red(pixel)
+                        1 -> Color.green(pixel)
+                        else -> Color.blue(pixel)
+                    } / 255.0f
+
+                    // ✅ mean/std 정규화 적용
+                    val normalized = (value - MEAN[c]) / STD[c]
+                    floatBuffer.put(normalized)
+                }
             }
         }
 
         floatBuffer.rewind()
-        val shape = longArrayOf(1, 3, height.toLong(), width.toLong())
+        val shape = longArrayOf(1, 3, POSE_HEIGHT.toLong(), POSE_WIDTH.toLong())
         return OnnxTensor.createTensor(ortEnvironment, floatBuffer, shape)
     }
 
-    private fun cropBitmap(bitmap: Bitmap, bbox: BoundingBox): Bitmap {
-        val x = bbox.x.toInt().coerceIn(0, bitmap.width - 1)
-        val y = bbox.y.toInt().coerceIn(0, bitmap.height - 1)
-        val w = bbox.width.toInt().coerceAtMost(bitmap.width - x)
-        val h = bbox.height.toInt().coerceAtMost(bitmap.height - y)
-        return Bitmap.createBitmap(bitmap, x, y, w, h)
-    }
-
-    private fun postprocessDetection(output: OrtSession.Result): List<BoundingBox> {
-        // TODO: YOLOX 출력 파싱
-        println("⚠️ postprocessDetection 미구현 - 빈 리스트 반환")
-        return emptyList()
-    }
-
+    // ✅ RTMPose 후처리 (문서 기반)
     private fun postprocessPose(output: OrtSession.Result): List<Keypoint> {
-        // TODO: RTMPose 출력 파싱
-        println("⚠️ postprocessPose 미구현 - 빈 리스트 반환")
-        return emptyList()
+        try {
+            // 출력 텐서 가져오기
+            val simccX = output[0]?.value as? Array<*> ?: return emptyList()
+            val simccY = output[1]?.value as? Array<*> ?: return emptyList()
+
+            // Shape: simcc_x [1, 133, 384], simcc_y [1, 133, 288]
+            val simccXArray = simccX[0] as Array<FloatArray>  // [133, 384]
+            val simccYArray = simccY[0] as Array<FloatArray>  // [133, 288]
+
+            val keypoints = mutableListOf<Keypoint>()
+
+            // 133개 키포인트 추출
+            for (i in 0 until 133) {
+                val xHeatmap = simccXArray[i]  // [384]
+                val yHeatmap = simccYArray[i]  // [288]
+
+                // argmax: 최대값의 인덱스 찾기
+                val xIndex = xHeatmap.argMax()
+                val yIndex = yHeatmap.argMax()
+
+                // 좌표 정규화 (0.0 ~ 1.0)
+                val x = xIndex / POSE_WIDTH.toFloat()
+                val y = yIndex / POSE_HEIGHT.toFloat()
+
+                // 신뢰도: 두 히트맵 최대값의 평균
+                val confidence = (xHeatmap[xIndex] + yHeatmap[yIndex]) / 2.0f
+
+                keypoints.add(Keypoint(x, y, confidence))
+            }
+
+            println("✅ 키포인트 추출 완료: ${keypoints.size}개")
+            return keypoints
+
+        } catch (e: Exception) {
+            println("❌ postprocessPose 실패: ${e.message}")
+            e.printStackTrace()
+            return emptyList()
+        }
+    }
+
+    // Helper: FloatArray에서 최대값의 인덱스 찾기
+    private fun FloatArray.argMax(): Int {
+        var maxIdx = 0
+        var maxVal = this[0]
+        for (i in 1 until size) {
+            if (this[i] > maxVal) {
+                maxVal = this[i]
+                maxIdx = i
+            }
+        }
+        return maxIdx
     }
 
     fun release() {
-        detectionSession?.close()
         poseSession?.close()
         ortEnvironment?.close()
-
-        detectionSession = null
         poseSession = null
         ortEnvironment = null
     }

@@ -1,6 +1,5 @@
 package com.example.camera2app
 
-
 import android.net.Uri
 import android.Manifest
 import android.content.Intent
@@ -13,29 +12,46 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
+import androidx.lifecycle.lifecycleScope
 import com.example.camera2app.camera.Camera2Controller
 import com.example.camera2app.databinding.ActivityMainBinding
 import com.example.camera2app.gallery.GalleryActivity
 import com.example.camera2app.util.Permissions
 import java.util.Locale
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
 
-import com.example.camera2app.ai.OnnxInferenceManager
-import com.example.camera2app.ai.BoundingBox
-import com.example.camera2app.ai.Keypoint
+// ✅ AI 시스템 import
+import com.example.camera2app.ai.*
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var controller: Camera2Controller
     private lateinit var scaleDetector: ScaleGestureDetector
-    private var onnxManager: OnnxInferenceManager? = null
-    private var isModelLoaded = false
 
+    // ✅ AI 시스템 (OnnxInferenceManager → PoseEstimationService + RealtimeAnalyzer)
+    private var poseEstimationService: PoseEstimationService? = null
+    private var realtimeAnalyzer: RealtimeAnalyzer? = null
+    private var isAIInitialized = false
+
+    // ✅ 레퍼런스 이미지
+    private var referenceBitmap: Bitmap? = null
+
+    // ✅ 실시간 분석 Job
+    private var realtimeAnalysisJob: Job? = null
+    private var lastAnalysisTime = 0L
+    private val analysisIntervalMs = 33L  // 30fps
 
     // EV 슬라이더
     private var tapEvSlider: View? = null
     private lateinit var rootFrame: FrameLayout
     private var isAllAuto = true
+    private var optionVisible = false
+
+    companion object {
+        private const val REQUEST_REFERENCE_IMAGE = 2001
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,32 +63,50 @@ class MainActivity : AppCompatActivity() {
         applyWindowInset()
         initCameraController()
 
-        initOnnxManager()
+        // ✅ AI 시스템 초기화
+        initAISystem()
 
         initPinchZoom()
         initButtons()
         requestPermissionsIfNeeded()
 
         setAspectText(Camera2Controller.AspectMode.RATIO_9_16)
-
-
     }
 
-    private fun initOnnxManager() {
-        // 백그라운드 스레드에서 초기화
+    // ✅ AI 시스템 초기화
+    private fun initAISystem() {
         Thread {
             try {
-                onnxManager = OnnxInferenceManager(this)
-                onnxManager?.initialize()
-                isModelLoaded = true
+                println("========================================")
+                println("🤖 AI 시스템 초기화 시작")
+                println("========================================")
+
+                val startTime = System.currentTimeMillis()
+
+                // 1. PoseEstimationService 초기화 (2-3초 소요)
+                poseEstimationService = PoseEstimationService(applicationContext)
+                poseEstimationService?.initialize()
+
+                // 2. RealtimeAnalyzer 초기화 (✅ poseEstimationService 전달!)
+                realtimeAnalyzer = RealtimeAnalyzer(poseEstimationService!!)
+
+                val elapsed = System.currentTimeMillis() - startTime
+                isAIInitialized = true
 
                 runOnUiThread {
-                    Toast.makeText(this, "✅ AI 모델 로드 완료", Toast.LENGTH_SHORT).show()
+                    println("========================================")
+                    println("✅ AI 시스템 초기화 완료 (${elapsed}ms)")
+                    println("========================================")
+                    Toast.makeText(this, "✅ AI 시스템 준비 완료", Toast.LENGTH_SHORT).show()
+
+                    // ✅ 피드백 UI 업데이트 시작
+                    startFeedbackUIUpdates()
                 }
+
             } catch (e: Exception) {
                 e.printStackTrace()
                 runOnUiThread {
-                    Toast.makeText(this, "❌ AI 모델 로드 실패", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "❌ AI 시스템 초기화 실패: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
@@ -103,11 +137,11 @@ class MainActivity : AppCompatActivity() {
             overlayView = binding.overlayView,
             textureView = binding.textureView,
             onFrameLevelChanged = {},
-            onSaved = { uri ->  // ✅ bitmap → uri로 변경
-                // Uri를 Bitmap으로 변환 후 포즈 분석
+            onSaved = { uri ->
+                // ✅ 촬영 완료 → 포즈 분석
                 val bitmap = uriToBitmap(uri)
                 if (bitmap != null) {
-                    processPoseEstimation(bitmap)
+                    processCapturedPhoto(bitmap)
                 }
             },
             previewContainer = binding.previewContainer
@@ -155,36 +189,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun processPoseEstimation(bitmap: Bitmap) {
-        // 모델이 로드되지 않았으면 알림
-        if (!isModelLoaded || onnxManager == null) {
+    // ✅ 촬영된 사진 처리
+    private fun processCapturedPhoto(bitmap: Bitmap) {
+        if (!isAIInitialized || poseEstimationService == null) {
             runOnUiThread {
-                Toast.makeText(this, "AI 모델 로딩 중... 잠시 후 다시 시도하세요", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "AI 시스템 로딩 중...", Toast.LENGTH_SHORT).show()
             }
             return
         }
 
-        // 백그라운드 스레드에서 실행
         Thread {
             try {
-                val manager = onnxManager ?: return@Thread
+                println("📸 촬영 사진 분석 중...")
+                val result = poseEstimationService?.detectPose(bitmap)
 
-                // 1. 사람 탐지
-                val persons = manager.detectPersons(bitmap)
-
-                // 2. 각 사람마다 포즈 추정
-                persons.forEach { bbox ->
-                    val keypoints = manager.estimatePose(bitmap, bbox)
-
-                    // UI 업데이트는 메인 스레드에서
+                if (result == null) {
                     runOnUiThread {
-                        Toast.makeText(
-                            this,
-                            "포즈 감지: ${keypoints.size}개 키포인트",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(this, "포즈를 찾을 수 없습니다", Toast.LENGTH_SHORT).show()
                     }
+                    return@Thread
                 }
+
+                println("✅ 포즈 검출 완료: ${result.keypoints.size}개 키포인트")
+
+                val highConf = result.keypoints.count { it.confidence > 0.5f }
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        "포즈 감지: ${highConf}개 키포인트 (신뢰도 >0.5)",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+
             } catch (e: Exception) {
                 e.printStackTrace()
                 runOnUiThread {
@@ -192,6 +228,141 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.start()
+    }
+
+    // ✅ 레퍼런스 이미지 선택 결과 처리
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == REQUEST_REFERENCE_IMAGE && resultCode == RESULT_OK) {
+            val imageUri = data?.data
+            if (imageUri != null) {
+                handleReferenceImage(imageUri)
+            } else {
+                Toast.makeText(this, "레퍼런스 이미지를 불러올 수 없습니다", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // ✅ 레퍼런스 이미지 처리
+    private fun handleReferenceImage(uri: Uri) {
+        Thread {
+            try {
+                println("📸 레퍼런스 이미지 분석 중...")
+
+                // URI → Bitmap
+                val bitmap = uriToBitmap(uri) ?: return@Thread
+                referenceBitmap = bitmap
+
+                if (!isAIInitialized || realtimeAnalyzer == null) {
+                    runOnUiThread {
+                        Toast.makeText(this, "AI 시스템이 아직 준비되지 않았습니다", Toast.LENGTH_SHORT).show()
+                    }
+                    return@Thread
+                }
+
+                // ✅ analyzeReference는 suspend 함수이므로 코루틴 사용
+                lifecycleScope.launch(Dispatchers.IO) {
+                    realtimeAnalyzer?.analyzeReference(bitmap)
+
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "레퍼런스 포즈 설정 완료 ✅", Toast.LENGTH_SHORT).show()
+
+                        // ✅ 실시간 분석 시작
+                        startRealtimeAnalysis()
+                    }
+                }
+
+            } catch (e: Exception) {
+                println("❌ 레퍼런스 이미지 처리 실패: ${e.message}")
+                e.printStackTrace()
+                runOnUiThread {
+                    Toast.makeText(this, "이미지 처리 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
+    }
+
+    // ✅ 실시간 포즈 분석 시작
+    private fun startRealtimeAnalysis() {
+        if (realtimeAnalysisJob?.isActive == true) {
+            println("⚠️ 실시간 분석이 이미 실행 중입니다")
+            return
+        }
+
+        println("🎬 실시간 포즈 분석 시작")
+
+        realtimeAnalysisJob = lifecycleScope.launch(Dispatchers.Default) {
+            while (isActive) {
+                try {
+                    val currentTime = System.currentTimeMillis()
+
+                    // 프레임 스킵 (30fps 유지)
+                    if (currentTime - lastAnalysisTime < analysisIntervalMs) {
+                        delay(10)
+                        continue
+                    }
+                    lastAnalysisTime = currentTime
+
+                    // TextureView에서 Bitmap 추출
+                    val bitmap = withContext(Dispatchers.Main) {
+                        binding.textureView.bitmap
+                    } ?: continue
+
+                    // ✅ analyzeFrame() 호출 (비-suspend 함수)
+                    realtimeAnalyzer?.analyzeFrame(
+                        bitmap = bitmap,
+                        isFrontCamera = false,  // TODO: 카메라 상태에 따라 변경
+                        currentAspectRatio = CameraAspectRatio.RATIO_16_9  // TODO: 현재 비율
+                    )
+
+                    // 메모리 정리
+                    bitmap.recycle()
+
+                } catch (e: Exception) {
+                    if (e !is CancellationException) {
+                        println("⚠️ 실시간 분석 오류: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+
+    // ✅ 실시간 포즈 분석 중지
+    private fun stopRealtimeAnalysis() {
+        realtimeAnalysisJob?.cancel()
+        realtimeAnalysisJob = null
+        println("🛑 실시간 포즈 분석 중지")
+    }
+
+    // ✅ 피드백 UI 업데이트
+    private fun startFeedbackUIUpdates() {
+        lifecycleScope.launch {
+            // ✅ instantFeedback 사용!
+            realtimeAnalyzer?.instantFeedback?.collectLatest { feedback ->
+                updateFeedbackUI(feedback)
+            }
+        }
+    }
+
+    private fun updateFeedbackUI(feedback: List<FeedbackItem>) {
+        if (feedback.isEmpty()) {
+            // 피드백 없음 → UI 숨기기
+            binding.overlayView.visibility = View.VISIBLE  // overlayView는 항상 표시 (줌, EV 등)
+            return
+        }
+
+        // 가장 우선순위 높은 피드백 1개만 표시
+        val topFeedback = feedback.firstOrNull() ?: return
+
+        // TODO: 실제 UI 컴포넌트로 표시
+        // 현재는 임시로 로그 출력
+        println("📢 피드백: [${topFeedback.category}] ${topFeedback.message}")
+
+        // 예시: Toast로 표시 (실제로는 Custom View 사용)
+        // runOnUiThread {
+        //     Toast.makeText(this, topFeedback.message, Toast.LENGTH_SHORT).show()
+        // }
     }
 
     // ---------------------------
@@ -220,17 +391,20 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // nullable이므로 체크 방식 변경
-        onnxManager?.release()
-        onnxManager = null
+        // ✅ AI 시스템 리소스 정리
+        stopRealtimeAnalysis()
+        realtimeAnalyzer?.cleanup()
+        poseEstimationService?.cleanup()
+        referenceBitmap?.recycle()
+        referenceBitmap = null
+        println("🧹 MainActivity 정리 완료")
     }
 
     // ---------------------------
     // 버튼들
     // ---------------------------
     private fun initButtons() {
-
-        // 촬영 - takePicture() → takePictureWithTimer()
+        // 촬영
         binding.btnShutter.setOnClickListener { controller.takePictureWithTimer() }
 
         // 카메라 전환
@@ -239,17 +413,17 @@ class MainActivity : AppCompatActivity() {
             controller.setFlashMode(Camera2Controller.FlashMode.OFF)
         }
 
-        // ★ 옵션 버튼 (점 6개) - 옵션바 열기
+        // ★ 옵션 버튼
         binding.btnOptions.setOnClickListener {
             toggleOptionBar()
         }
 
-        // ★ 옵션 닫기 (X 버튼) - 옵션바 닫기
+        // ★ 옵션 닫기
         binding.btnCloseOption.setOnClickListener {
             toggleOptionBar()
         }
 
-        // 플래시 (OFF → AUTO → ON → OFF)
+        // 플래시
         binding.btnFlash.setOnClickListener {
             val next = when (controller.getFlashMode()) {
                 Camera2Controller.FlashMode.OFF -> Camera2Controller.FlashMode.AUTO
@@ -268,7 +442,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        // EXP → EV 슬라이더 중앙 오픈
+        // EXP
         binding.btnExp.setOnClickListener {
             showTapEvSliderCenter()
         }
@@ -285,18 +459,17 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
-        // 레퍼런스
+        // ✅ 레퍼런스 (이미지 선택 Activity 실행)
         binding.menuReference.setOnClickListener {
-            startActivity(Intent(this, com.example.camera2app.reference.ReferenceActivity::class.java))
+            val intent = Intent(this, com.example.camera2app.reference.ReferenceActivity::class.java)
+            startActivityForResult(intent, REQUEST_REFERENCE_IMAGE)
         }
     }
 
     // ---------------------------
-    // EV 슬라이더 (EXP or tap)
+    // EV 슬라이더
     // ---------------------------
-
     private fun showTapEvSliderCenter() {
-        // 이미 열려있으면 닫기
         if (tapEvSlider != null) {
             rootFrame.removeView(tapEvSlider)
             tapEvSlider = null
@@ -310,35 +483,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTapEvSlider(x: Float, y: Float) {
-        // 프리뷰 탭하면 슬라이더 닫기
         if (tapEvSlider != null) {
             rootFrame.removeView(tapEvSlider)
             tapEvSlider = null
             return
         }
-
-        // EXP 버튼으로만 열리게 하려면 여기서 return
-        // 탭으로도 열고 싶으면 아래 코드 활성화
-        /*
-        isAllAuto = false
-        tapEvSlider = createTapEvSlider(x, y)
-        rootFrame.addView(tapEvSlider)
-        tapEvSlider?.bringToFront()
-        */
     }
-
-    private var optionVisible = false
 
     private fun toggleOptionBar() {
         optionVisible = !optionVisible
 
         if (optionVisible) {
-            // 옵션바 열기: 옵션 버튼 숨기고, 옵션바 표시
             binding.btnOptions.visibility = View.GONE
             binding.optionBar.visibility = View.VISIBLE
             animateOptionBar(show = true)
         } else {
-            // 옵션바 닫기: 옵션바 숨기고, 옵션 버튼 표시
             animateOptionBar(show = false)
         }
     }
@@ -361,31 +520,25 @@ class MainActivity : AppCompatActivity() {
                 .setDuration(200)
                 .withEndAction {
                     view.visibility = View.GONE
-                    // ★ 옵션바 닫힐 때 옵션 버튼 다시 표시
                     binding.btnOptions.visibility = View.VISIBLE
                 }
                 .start()
         }
     }
 
-
     private fun createTapEvSlider(tapX: Float, tapY: Float): View {
         val container = FrameLayout(this)
 
-        // 전체 슬라이더 높이
         val sliderHeight = dp(280)
         val lineWidth = dp(3)
         val iconSize = dp(32)
         val containerWidth = dp(50)
 
-        // 아이콘 이동 가능 범위 (위아래 여백 제외)
         val padding = dp(16)
         val trackHeight = sliderHeight - iconSize - (padding * 2)
-        val iconGap = dp(8)  // 아이콘 양옆 빈 공간
+        val iconGap = dp(8)
 
-        // ─────────────────────────────────────────
-        // 1) 위쪽 라인
-        // ─────────────────────────────────────────
+        // 위쪽 라인
         val topLine = View(this).apply {
             setBackgroundColor(0xFFFFFFFF.toInt())
         }
@@ -395,9 +548,7 @@ class MainActivity : AppCompatActivity() {
         }
         container.addView(topLine, topLineLp)
 
-        // ─────────────────────────────────────────
-        // 2) 아래쪽 라인
-        // ─────────────────────────────────────────
+        // 아래쪽 라인
         val bottomLine = View(this).apply {
             setBackgroundColor(0xFFFFFFFF.toInt())
         }
@@ -407,46 +558,36 @@ class MainActivity : AppCompatActivity() {
         }
         container.addView(bottomLine, bottomLineLp)
 
-        // ─────────────────────────────────────────
-        // 3) 태양 아이콘 (위아래로 움직임, 줄 위에 표시)
-        // ─────────────────────────────────────────
+        // 태양 아이콘
         val sunIcon = ImageView(this).apply {
             setImageResource(R.drawable.clear_day)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            elevation = dp(4).toFloat()  // 줄 위에 표시
+            elevation = dp(4).toFloat()
         }
         val sunLp = FrameLayout.LayoutParams(iconSize, iconSize).apply {
             gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
-            topMargin = padding + (trackHeight / 2)  // 초기 위치: 중앙
+            topMargin = padding + (trackHeight / 2)
         }
         container.addView(sunIcon, sunLp)
 
-        // 라인 높이 업데이트 함수
         fun updateLines(iconTopMargin: Int) {
-            // 위쪽 라인: padding부터 아이콘 위까지
             val topLineHeight = iconTopMargin - padding - iconGap
             topLineLp.height = maxOf(0, topLineHeight)
             topLine.layoutParams = topLineLp
 
-            // 아래쪽 라인: 아이콘 아래부터 끝까지
             val iconBottom = iconTopMargin + iconSize + iconGap
             val bottomLineHeight = sliderHeight - padding - iconBottom
             bottomLineLp.height = maxOf(0, bottomLineHeight)
             bottomLine.layoutParams = bottomLineLp
         }
 
-        // 초기 라인 높이 설정
         updateLines(sunLp.topMargin)
 
-        // ─────────────────────────────────────────
-        // 4) 투명 SeekBar (터치 영역)
-        // ─────────────────────────────────────────
+        // SeekBar
         val seek = SeekBar(this).apply {
             max = 800
-            progress = 400  // 중앙 = EV 0
+            progress = 400
             rotation = -90f
-
-            // 투명하게
             thumb = null
             progressDrawable = null
             background = null
@@ -454,18 +595,14 @@ class MainActivity : AppCompatActivity() {
 
         seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
-                // p: 0~800, 중앙 400 = EV 0
                 val ev = (p - 400) / 100.0
                 controller.applyEv(ev)
 
-                // 아이콘 위치 업데이트
-                // p=0 → 맨 아래 (어두움), p=800 → 맨 위 (밝음)
-                val ratio = 1f - (p / 800f)  // 0~1 (위에서 아래로)
+                val ratio = 1f - (p / 800f)
                 val newTopMargin = padding + (trackHeight * ratio).toInt()
                 sunLp.topMargin = newTopMargin
                 sunIcon.layoutParams = sunLp
 
-                // 라인 높이 업데이트
                 updateLines(newTopMargin)
             }
 
@@ -473,20 +610,14 @@ class MainActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
 
-        // SeekBar 레이아웃 (전체 영역 덮음)
         val seekLp = FrameLayout.LayoutParams(sliderHeight, containerWidth).apply {
             gravity = Gravity.CENTER
         }
         container.addView(seek, seekLp)
 
-        // ─────────────────────────────────────────
-        // 컨테이너 위치 설정
-        // ─────────────────────────────────────────
         val lp = FrameLayout.LayoutParams(containerWidth, sliderHeight).apply {
             gravity = Gravity.END
             rightMargin = dp(16)
-
-            // 화면 중앙에 배치
             val screenHeight = binding.previewContainer.height
             topMargin = (screenHeight - sliderHeight) / 2
         }
@@ -501,11 +632,6 @@ class MainActivity : AppCompatActivity() {
     // ---------------------------
     // Timer
     // ---------------------------
-    private var timerSec = 3
-
-    // ---------------------------
-// Timer
-// ---------------------------
     private fun toggleTimer() {
         val mode = controller.cycleTimerMode()
         updateTimerIcon(mode)
@@ -523,17 +649,25 @@ class MainActivity : AppCompatActivity() {
     // ---------------------------
     // Aspect Ratio
     // ---------------------------
-
     override fun onResume() {
         super.onResume()
         controller.onResume()
         controller.setAllAuto()
         isAllAuto = true
+
+        // ✅ 실시간 분석 재시작 (레퍼런스가 설정되어 있으면)
+        if (realtimeAnalyzer?.referenceAnalysis != null && isAIInitialized) {
+            startRealtimeAnalysis()
+        }
     }
 
     override fun onPause() {
         controller.cancelTimer()
         controller.onPause()
+
+        // ✅ 실시간 분석 일시 중지
+        stopRealtimeAnalysis()
+
         super.onPause()
     }
 
@@ -558,14 +692,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------------------------
-    // 블러 전환 애니메이션
+    // 블러 효과
     // ---------------------------
-
-    // MainActivity.kt
-
-    // ---------------------------
-// 블러 효과 (추가)
-// ---------------------------
     private fun setPreviewBlur(enabled: Boolean) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             if (enabled) {
@@ -579,19 +707,15 @@ class MainActivity : AppCompatActivity() {
                 binding.textureView.setRenderEffect(null)
             }
         } else {
-            // Android 11 이하: 알파로 페이드
             binding.textureView.alpha = if (enabled) 0.3f else 1f
         }
     }
 
-    // ---------------------------
-// Aspect Ratio (수정)
-// ---------------------------
     private fun toggleAspectRatio() {
-        // 1) 블러 ON
+        // 블러 ON
         setPreviewBlur(true)
 
-        // 2) 비율 전환
+        // 비율 전환
         val next = when (binding.btnRatio.text) {
             "1:1" -> "4:3"
             "4:3" -> "16:9"
@@ -600,29 +724,27 @@ class MainActivity : AppCompatActivity() {
         binding.btnRatio.text = next
         controller.setAspectRatio(next)
 
-        // 3) 0.3초 후 블러 해제
+        // 0.3초 후 블러 해제
         binding.textureView.postDelayed({
             setPreviewBlur(false)
         }, 300L)
     }
-    private fun playAspectTransition(onMidpoint: () -> Unit) {
-        val blurOverlay = binding.blurOverlay  // ★ XML에 추가 필요
 
-        // 1) 블러 페이드 인
+    private fun playAspectTransition(onMidpoint: () -> Unit) {
+        val blurOverlay = binding.blurOverlay
+
         blurOverlay.alpha = 0f
         blurOverlay.visibility = View.VISIBLE
         blurOverlay.animate()
             .alpha(1f)
             .setDuration(150)
             .withEndAction {
-                // 2) 중간 지점에서 비율 변경
                 onMidpoint()
 
-                // 3) 블러 페이드 아웃
                 blurOverlay.animate()
                     .alpha(0f)
                     .setDuration(150)
-                    .setStartDelay(50)  // 비율 변경 적용 대기
+                    .setStartDelay(50)
                     .withEndAction {
                         blurOverlay.visibility = View.GONE
                     }
@@ -630,8 +752,4 @@ class MainActivity : AppCompatActivity() {
             }
             .start()
     }
-
-
-
-
 }

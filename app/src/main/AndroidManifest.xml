@@ -46,6 +46,22 @@
 
         <activity android:name=".reference.ReferenceActivity" />
 
+        <!-- ✅ ImageDetailActivity 추가 -->
+        <activity
+            android:name=".reference.ImageDetailActivity"
+            android:screenOrientation="portrait" />
+
+        <!-- ✅ FileProvider 추가 (이미 있으면 스킵) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
 
 
 

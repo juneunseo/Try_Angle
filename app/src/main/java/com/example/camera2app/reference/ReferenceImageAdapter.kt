@@ -1,5 +1,6 @@
 package com.example.camera2app.reference
 
+import android.content.Intent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -7,9 +8,10 @@ import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
 import com.example.camera2app.R
 
+
 class ReferenceImageAdapter(
     private var images: List<Int>,
-    private val onLikeChanged: (() -> Unit)? = null  // 좋아요 변경 콜백
+    private val onLikeChanged: (() -> Unit)? = null
 ) : RecyclerView.Adapter<ReferenceImageAdapter.Holder>() {
 
     inner class Holder(view: View) : RecyclerView.ViewHolder(view) {
@@ -27,16 +29,31 @@ class ReferenceImageAdapter(
         val imageRes = images[position]
         holder.img.setImageResource(imageRes)
 
-        // 하트 상태 표시 (LikeManager에서 가져옴)
+        // 하트 상태 표시
         val isLiked = LikeManager.isLiked(imageRes)
         updateHeartIcon(holder.heart, isLiked)
+
+        // ✅ 이미지 클릭 → ImageDetailActivity로 이동 (이 부분 추가!)
+        holder.img.setOnClickListener {
+            val context = holder.itemView.context
+            val intent = Intent(context, ImageDetailActivity::class.java).apply {
+                putExtra(ImageDetailActivity.EXTRA_IMAGE_RES_ID, imageRes)
+            }
+
+            // ✅ startActivityForResult 사용
+            if (context is ReferenceActivity) {
+                context.startActivityForResult(intent, ReferenceActivity.REQUEST_IMAGE_DETAIL)
+            } else {
+                context.startActivity(intent)
+            }
+        }
+
 
         // 하트 클릭 리스너
         holder.heart.setOnClickListener {
             val nowLiked = LikeManager.toggleLike(imageRes)
             updateHeartIcon(holder.heart, nowLiked)
 
-            // 콜백 호출 (My 탭 갱신용)
             onLikeChanged?.invoke()
 
             // 팝 애니메이션
@@ -64,7 +81,6 @@ class ReferenceImageAdapter(
         )
     }
 
-    // 이미지 목록 갱신 (My 탭용)
     fun updateImages(newImages: List<Int>) {
         images = newImages
         notifyDataSetChanged()

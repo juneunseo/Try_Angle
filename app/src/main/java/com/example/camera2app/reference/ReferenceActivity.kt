@@ -1,5 +1,7 @@
 package com.example.camera2app.reference
 
+import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.widget.LinearLayout
@@ -8,6 +10,10 @@ import androidx.appcompat.app.AppCompatActivity
 import com.example.camera2app.R
 
 class ReferenceActivity : AppCompatActivity() {
+
+    companion object {
+        const val REQUEST_IMAGE_DETAIL = 3001
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,6 +28,17 @@ class ReferenceActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction()
             .replace(R.id.referenceContainer, ReferenceFragment.newInstance(ReferenceCategory.MY))
             .commit()
+    }
+
+    // ✅ ImageDetailActivity의 결과를 받아서 MainActivity로 전달
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == REQUEST_IMAGE_DETAIL && resultCode == Activity.RESULT_OK) {
+            // ImageDetailActivity의 결과를 그대로 MainActivity로 전달
+            setResult(Activity.RESULT_OK, data)
+            finish()  // ReferenceActivity도 종료해서 MainActivity로 돌아감
+        }
     }
 
     private fun setupCategoryTabs() {
