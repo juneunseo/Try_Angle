@@ -126,11 +126,18 @@
         <TextView
             android:id="@+id/btnRatio"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:text="16:9"
             android:textColor="#FFFFFF"
             android:textSize="13sp"
-            android:layout_marginStart="24dp" />
+            android:layout_marginStart="24dp"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:gravity="center"
+            android:minWidth="48dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless" />
 
         <ImageButton
             android:id="@+id/btnFlash"

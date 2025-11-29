@@ -117,8 +117,7 @@ class MainActivity : AppCompatActivity() {
     // ✅ 피드백 UI 보이기 - 초기 상태는 회색
     private fun showFeedbackUI() {
         feedbackStatusContainer.visibility = View.VISIBLE
-        // ✅ 분석 모드에서 옵션 버튼 숨기기
-        binding.btnOptions.visibility = View.GONE
+
         // 옵션바가 열려있으면 닫기
         if (optionVisible) {
             binding.optionBar.visibility = View.GONE
@@ -665,18 +664,12 @@ class MainActivity : AppCompatActivity() {
                         println("⚠️ 분석 중 오류: ${e.message}")
                         consecutiveFailures++
 
-                        // ⭐ 연속 실패 시 UI 업데이트
                         if (consecutiveFailures >= 3) {
                             withContext(Dispatchers.Main) {
                                 setAllStatusGray()
                                 feedbackMessageContainer.visibility = View.VISIBLE
                                 feedbackMessage.text = "포즈 인식 실패"
                             }
-                        }
-                    } finally {
-                        // 분석 완료 후 반드시 recycle
-                        if (!bitmap.isRecycled) {
-                            bitmap.recycle()
                         }
                     }
 
@@ -888,6 +881,19 @@ class MainActivity : AppCompatActivity() {
             binding.btnShutter.postDelayed({
                 controller.takePictureWithTimer()
             }, 150)
+        }
+
+        // ⭐ 전면/후면 카메라 전환 버튼 추가
+        binding.btnSwitch.setOnClickListener {
+            controller.switchCamera()
+
+            // ✅ 레퍼런스가 설정된 경우 분석 재시작
+            if (isReferenceSet && isAIInitialized) {
+                // 카메라 전환 후 약간의 딜레이를 주고 분석 재시작
+                binding.textureView.postDelayed({
+                    startRealtimeAnalysis()
+                }, 500)
+            }
         }
 
         binding.btnOptions.setOnClickListener {

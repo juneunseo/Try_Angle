@@ -212,6 +212,7 @@ class RealtimeAnalyzer(
 
     // MARK: - 실시간 프레임 분석
 
+    // MARK: - 실시간 프레임 분석
     fun analyzeFrame(
         bitmap: Bitmap,
         isFrontCamera: Boolean = false,
@@ -227,10 +228,40 @@ class RealtimeAnalyzer(
         // 레퍼런스가 없으면 분석하지 않음
         val reference = referenceAnalysis ?: run {
             analysisScope.launch(Dispatchers.Main) {
-                _instantFeedback.value = emptyList()
+                _instantFeedback.value = listOf(
+                    FeedbackItem(
+                        priority = 1,
+                        icon = "👤",
+                        message = "얼굴을 화면에 보여주세요",
+                        category = "no_face",
+                        currentValue = null,
+                        targetValue = null,
+                        tolerance = null,
+                        unit = null
+                    )
+                )
                 _perfectScore.value = 0.0
                 _isPerfect.value = false
             }
+            return
+        }
+
+        // ⭐ Bitmap 유효성 체크
+        if (bitmap.isRecycled) {
+            println("⚠️ analyzeFrame: bitmap이 이미 recycle됨")
+            return
+        }
+
+        // ⭐ Bitmap 복사 (비동기 실행 중 recycle 방지)
+        val bitmapCopy: Bitmap
+        try {
+            bitmapCopy = bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
+                ?: run {
+                    println("⚠️ analyzeFrame: bitmap 복사 실패")
+                    return
+                }
+        } catch (e: Exception) {
+            println("⚠️ analyzeFrame: bitmap 복사 중 오류: ${e.message}")
             return
         }
 
@@ -239,30 +270,42 @@ class RealtimeAnalyzer(
 
         // 백그라운드에서 분석 실행
         analysisScope.launch {
-            val analysisStart = System.currentTimeMillis()
+            try {
+                val analysisStart = System.currentTimeMillis()
 
-            // RTMPose로 분석
-            val poseStart = System.currentTimeMillis()
-            val poseResult = poseEstimationService.detectPose(bitmap)
-            val poseEnd = System.currentTimeMillis()
+                // RTMPose로 분석 (복사본 사용)
+                val poseStart = System.currentTimeMillis()
+                val poseResult = poseEstimationService.detectPose(bitmapCopy)
+                val poseEnd = System.currentTimeMillis()
 
-            val analysisEnd = System.currentTimeMillis()
+                val analysisEnd = System.currentTimeMillis()
 
-            // 프로파일링 로그
-            val poseTime = poseEnd - poseStart
-            val totalTime = analysisEnd - analysisStart
-            println("📊 [RealtimeAnalyzer] RTMPose: ${poseTime}ms, 총분석: ${totalTime}ms")
+                // 프로파일링 로그
+                val poseTime = poseEnd - poseStart
+                val totalTime = analysisEnd - analysisStart
+                println("📊 [RealtimeAnalyzer] RTMPose: ${poseTime}ms, 총분석: ${totalTime}ms")
 
-            // 메인 스레드에서 결과 처리
-            withContext(Dispatchers.Main) {
-                isAnalyzing = false
-                processAnalysisResult(
-                    poseResult = poseResult,
-                    bitmap = bitmap,
-                    reference = reference,
-                    isFrontCamera = isFrontCamera,
-                    currentAspectRatio = currentAspectRatio
-                )
+                // 메인 스레드에서 결과 처리
+                withContext(Dispatchers.Main) {
+                    isAnalyzing = false
+                    processAnalysisResult(
+                        poseResult = poseResult,
+                        bitmap = bitmapCopy,
+                        reference = reference,
+                        isFrontCamera = isFrontCamera,
+                        currentAspectRatio = currentAspectRatio
+                    )
+                }
+            } catch (e: Exception) {
+                println("⚠️ analyzeFrame 코루틴 오류: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    isAnalyzing = false
+                }
+            } finally {
+                // ⭐ 분석 완료 후 복사본 recycle
+                if (!bitmapCopy.isRecycled) {
+                    bitmapCopy.recycle()
+                }
             }
         }
     }

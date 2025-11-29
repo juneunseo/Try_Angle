@@ -133,8 +133,9 @@ class Camera2Controller(
             // 1) JPEG → Bitmap 로드
             val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
 
-            // 2) 회전 적용
-            val rotated = rotateBitmap(bmp, lastJpegOrientation)
+            // 2) 회전 + 전면이면 미러링 적용
+            val isFront = lensFacing == CameraCharacteristics.LENS_FACING_FRONT
+            val rotated = transformBitmap(bmp, lastJpegOrientation, mirror = isFront)
 
             // 3) 현재 화면비(aspectMode)에 맞춰 중앙 크롭
             val cropped = cropToAspect(rotated, aspectMode)
@@ -477,7 +478,8 @@ class Camera2Controller(
         // 센서 비율 그대로 사용 (캡처에서도 센서 crop 영역만 저장)
         // 비율 보정은 applyZoomAndAspect()의 sensor crop이 담당하므로,
         // JPEG 해상도는 가장 큰 센서 해상도 그대로 사용하면 됨.
-        val captureSize = jpegSizes.maxBy { it.width * it.height }
+        val captureSize = jpegSizes.maxByOrNull { it.width * it.height }
+            ?: Size(1920, 1080)
 
         Log.d(
             TAG,
@@ -507,11 +509,14 @@ class Camera2Controller(
             // 1) JPEG → Bitmap 로드
             val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
 
-            // 2) 회전 적용
-            val rotated = rotateBitmap(bmp, lastJpegOrientation)
+            // 2) 회전 + 전면이면 미러링 적용
+            val isFront = lensFacing == CameraCharacteristics.LENS_FACING_FRONT
+            val transformed = transformBitmap(bmp, lastJpegOrientation, mirror = isFront)
 
-            // 3) aspectMode 에 맞춰 중앙 크롭
-            val cropped = cropToAspect(rotated, aspectMode)
+
+            // 2) 회전 적용
+            val cropped = cropToAspect(transformed, aspectMode)
+
 
             // 4) 최종 JPEG로 압축
             val out = ByteArrayOutputStream()
@@ -998,10 +1003,24 @@ class Camera2Controller(
     // =========================================================================================
     // Utils / getters
     // =========================================================================================
-    private fun rotateBitmap(src: Bitmap, degrees: Int): Bitmap {
-        if (degrees == 0) return src
+    private fun transformBitmap(src: Bitmap, degrees: Int, mirror: Boolean): Bitmap {
+        if (degrees == 0 && !mirror) return src
+
         val m = Matrix()
-        m.postRotate(degrees.toFloat())
+
+        // 1) 먼저 회전
+        if (degrees != 0) {
+            m.postRotate(degrees.toFloat(), src.width / 2f, src.height / 2f)
+        }
+
+        // 2) 회전 후 미러링 (좌우만 반전)
+        if (mirror) {
+            // 회전 후 이미지 크기 계산
+            val rotatedW = if (degrees == 90 || degrees == 270) src.height else src.width
+            val rotatedH = if (degrees == 90 || degrees == 270) src.width else src.height
+            m.postScale(-1f, 1f, rotatedW / 2f, rotatedH / 2f)
+        }
+
         return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
     }
 
