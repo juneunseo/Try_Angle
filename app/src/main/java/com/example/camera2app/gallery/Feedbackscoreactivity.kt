@@ -53,12 +53,13 @@ class FeedbackScoreActivity : ComponentActivity() {
         }
 
         // (i) 정보 버튼 → FeedbackActivity로 이동
+        // (i) 정보 버튼 → FeedbackActivity로 이동
         binding.btnInfo.setOnClickListener {
             val intent = Intent(this, FeedbackActivity::class.java).apply {
                 putExtra(FeedbackActivity.EXTRA_IMAGE_URI, capturedUri)
-                // 필요하면 추가 데이터 전달
-                putExtra("EXTRA_REFERENCE_URI", referenceUri)
-                putExtra("EXTRA_SCORE", score)
+                putExtra(FeedbackActivity.EXTRA_REFERENCE_URI, referenceUri)
+                putExtra(FeedbackActivity.EXTRA_SCORE, score)
+                putExtra(FeedbackActivity.EXTRA_FEEDBACK_MESSAGE, feedbackMessage)
             }
             startActivity(intent)
         }

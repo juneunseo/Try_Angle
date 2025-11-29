@@ -484,6 +484,17 @@ class RealtimeAnalyzer(
         _perfectScore.value = score
         _isPerfect.value = perfectFrameCount >= perfectThreshold
         _categoryStatuses.value = categoryStatuses
+
+
+        // ⭐ 디버깅 로그 추가
+        println("📢 실시간 피드백 업데이트: ${stableFeedback.size}개")
+        if (stableFeedback.isNotEmpty()) {
+            stableFeedback.forEach { fb ->
+                println("   - [${fb.category}] ${fb.message}")
+            }
+        } else {
+            println("   - ✅ 완벽한 상태!")
+        }
     }
 
     // MARK: - Category Status Calculation

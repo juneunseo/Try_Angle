@@ -114,7 +114,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnOptions.visibility = View.VISIBLE
     }
 
-    // ✅ 피드백 UI 보이기
+    // ✅ 피드백 UI 보이기 - 초기 상태는 회색
     private fun showFeedbackUI() {
         feedbackStatusContainer.visibility = View.VISIBLE
         // ✅ 분석 모드에서 옵션 버튼 숨기기
@@ -129,10 +129,25 @@ class MainActivity : AppCompatActivity() {
             rootFrame.removeView(tapEvSlider)
             tapEvSlider = null
         }
+
+        // ⭐ 초기 상태: 모든 아이콘 회색 (분석 대기 중)
+        setAllStatusGray()
+        feedbackMessageContainer.visibility = View.VISIBLE
+        feedbackMessage.text = "포즈 분석 중..."
+    }
+
+    // ⭐ 모든 아이콘 회색으로 (분석 실패 또는 대기 중)
+    private fun setAllStatusGray() {
+        val grayDrawable = resources.getDrawable(R.drawable.ic_select_empty, null)
+        iconPose.setImageDrawable(grayDrawable)
+        iconPosition.setImageDrawable(grayDrawable)
+        iconFraming.setImageDrawable(grayDrawable)
+        iconAngle.setImageDrawable(grayDrawable)
+        iconComposition.setImageDrawable(grayDrawable)
+        iconGaze.setImageDrawable(grayDrawable)
     }
 
     // ✅ AI 시스템 초기화
-    // ✅ AI 시스템 초기화 (원래 코드 유지)
     private fun initAISystem() {
         Thread {
             try {
@@ -312,6 +327,7 @@ class MainActivity : AppCompatActivity() {
                     println("📸 백그라운드 스레드 시작")
                     println("📸 촬영 사진 분석 시작...")
 
+                    // ⭐ 2. AI 분석
                     val capturedResult = poseEstimationService?.detectPose(bitmap)
                     println("📸 capturedResult: ${capturedResult?.keypoints?.size ?: "null"}")
 
@@ -320,6 +336,19 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             hideLoadingOverlay()
                             Toast.makeText(this, "포즈를 찾을 수 없습니다", Toast.LENGTH_SHORT).show()
+                        }
+                        return@Thread
+                    }
+
+                    // ⭐ 유효한 키포인트 개수 체크 추가
+                    val capturedValidKeypoints = capturedResult.keypoints.count { it.confidence >= 0.5f }
+                    println("📸 촬영 사진 유효한 키포인트: $capturedValidKeypoints / ${capturedResult.keypoints.size}")
+
+                    if (capturedValidKeypoints < 10) {
+                        println("❌ 촬영 사진: 유효한 키포인트 부족 → 사람이 제대로 인식되지 않음")
+                        runOnUiThread {
+                            hideLoadingOverlay()
+                            Toast.makeText(this, "사람이 제대로 인식되지 않았습니다.\n다시 촬영해주세요.", Toast.LENGTH_LONG).show()
                         }
                         return@Thread
                     }
@@ -333,6 +362,19 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             hideLoadingOverlay()
                             Toast.makeText(this, "레퍼런스 포즈를 분석할 수 없습니다", Toast.LENGTH_SHORT).show()
+                        }
+                        return@Thread
+                    }
+
+                    // ⭐ 레퍼런스도 유효 키포인트 체크
+                    val refValidKeypoints = referenceResult.keypoints.count { it.confidence >= 0.5f }
+                    println("📸 레퍼런스 유효한 키포인트: $refValidKeypoints / ${referenceResult.keypoints.size}")
+
+                    if (refValidKeypoints < 10) {
+                        println("❌ 레퍼런스: 유효한 키포인트 부족")
+                        runOnUiThread {
+                            hideLoadingOverlay()
+                            Toast.makeText(this, "레퍼런스 이미지의 포즈가 명확하지 않습니다.", Toast.LENGTH_LONG).show()
                         }
                         return@Thread
                     }
@@ -396,8 +438,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
-    // ⭐ 포즈 유사도 계산 (0.0 ~ 10.0) - 안전한 버전
+    // ⭐ 포즈 유사도 계산 (0.0 ~ 10.0) - 엄격한 버전
     private fun calculatePoseSimilarity(
         captured: RTMPoseResult,
         reference: RTMPoseResult
@@ -405,19 +446,34 @@ class MainActivity : AppCompatActivity() {
         var totalDistance = 0f
         var count = 0
 
-        // ⭐ 두 배열 중 더 작은 크기까지만 비교 (IndexOutOfBounds 방지)
         val minSize = minOf(captured.keypoints.size, reference.keypoints.size)
 
         println("📊 키포인트 비교: captured=${captured.keypoints.size}, reference=${reference.keypoints.size}, 비교할 개수=$minSize")
 
-        if (minSize == 0) return 5.0f  // 기본값
+        if (minSize == 0) {
+            println("❌ 키포인트가 없음 → 점수 0.0")
+            return 0.0f
+        }
 
-        for (i in 0 until minSize) {
+        // ⭐ 주요 신체 부위만 비교 (더 정확한 평가)
+        val importantIndices = listOf(
+            0,  // 코
+            5, 6,  // 어깨
+            7, 8,  // 팔꿈치
+            9, 10,  // 손목
+            11, 12,  // 엉덩이
+            13, 14,  // 무릎
+            15, 16   // 발목
+        )
+
+        for (i in importantIndices) {
+            if (i >= minSize) continue
+
             val cap = captured.keypoints[i]
             val ref = reference.keypoints[i]
 
-            // 신뢰도가 낮은 키포인트는 제외
-            if (cap.confidence < 0.3f || ref.confidence < 0.3f) continue
+            // ⭐ 신뢰도 임계값 (0.5 이상만)
+            if (cap.confidence < 0.5f || ref.confidence < 0.5f) continue
 
             val dx = cap.x - ref.x
             val dy = cap.y - ref.y
@@ -427,10 +483,19 @@ class MainActivity : AppCompatActivity() {
             count++
         }
 
-        if (count == 0) return 5.0f
+        println("📊 유효한 키포인트 쌍: ${count}개")
+
+        // ⭐ 유효한 키포인트가 5개 미만이면 낮은 점수
+        if (count < 5) {
+            println("❌ 유효한 키포인트 부족 (${count}개) → 점수 1.0")
+            return 1.0f
+        }
 
         val avgDistance = totalDistance / count
-        val score = (10.0f - avgDistance * 10f).coerceIn(0f, 10f)
+
+        // ⭐ 거리 기반 점수 계산
+        val normalizedDistance = (avgDistance / 0.5f).coerceIn(0f, 1f)
+        val score = ((1f - normalizedDistance) * 10f).coerceIn(0f, 10f)
 
         println("📊 유사도 계산 완료: avgDistance=$avgDistance, score=$score")
 
@@ -517,20 +582,15 @@ class MainActivity : AppCompatActivity() {
         println("🛑 레퍼런스 해제, 분석 모드 종료")
     }
 
-
-
-    // ✅ 실시간 포즈 분석 시작
-    // ✅ 실시간 포즈 분석 시작
+    // ✅ 실시간 포즈 분석 시작 - 더 안전한 버전
     private fun startRealtimeAnalysis() {
-        // ⭐⭐⭐ 임시로 완전히 비활성화
-        println("⚠️ 실시간 분석 임시 비활성화 (TextureView Bitmap 충돌 방지)")
-        return
-
-        // ========== 아래 코드는 모두 실행 안 됨 ==========
-        /*
-        // 레퍼런스가 설정되지 않았으면 시작하지 않음
         if (!isReferenceSet) {
             println("⚠️ 레퍼런스가 설정되지 않아 분석을 시작하지 않습니다")
+            return
+        }
+
+        if (!isAIInitialized || realtimeAnalyzer == null) {
+            println("⚠️ AI 시스템이 준비되지 않음")
             return
         }
 
@@ -541,84 +601,144 @@ class MainActivity : AppCompatActivity() {
 
         println("🎬 실시간 포즈 분석 시작")
 
+        // ⭐ 분석 시작 시 초기 상태 표시
+        runOnUiThread {
+            setAllStatusGray()
+            feedbackMessageContainer.visibility = View.VISIBLE
+            feedbackMessage.text = "포즈 분석 중..."
+        }
+
         realtimeAnalysisJob = lifecycleScope.launch(Dispatchers.Default) {
+            var consecutiveFailures = 0  // ⭐ 연속 실패 카운터
+
             while (isActive) {
                 try {
                     val currentTime = System.currentTimeMillis()
 
-                    if (currentTime - lastAnalysisTime < analysisIntervalMs) {
-                        delay(10)
+                    // 분석 간격 300ms (약 3fps) - 안정성 우선
+                    if (currentTime - lastAnalysisTime < 300L) {
+                        delay(50)
                         continue
                     }
                     lastAnalysisTime = currentTime
 
-                    // ✅ Main 스레드에서 안전하게 Bitmap 복사
-                    val bitmap = withContext(Dispatchers.Main) {
-                        try {
-                            val original = binding.textureView.bitmap
-
-                            // ⭐ 더 안전한 체크
-                            if (original == null || original.isRecycled) {
-                                return@withContext null
-                            }
-
-                            if (original.width <= 0 || original.height <= 0) {
-                                return@withContext null
-                            }
-
-                            // ⭐ 복사 실패해도 앱 안 죽게
-                            try {
-                                Bitmap.createBitmap(
-                                    original.width,
-                                    original.height,
-                                    Bitmap.Config.ARGB_8888
-                                ).also { copy ->
-                                    val canvas = android.graphics.Canvas(copy)
-                                    canvas.drawBitmap(original, 0f, 0f, null)
-                                }
-                            } catch (e: Exception) {
-                                null // ⭐ 복사 실패하면 null 반환
-                            }
-
-                        } catch (e: Exception) {
-                            println("⚠️ Bitmap 접근 실패: ${e.message}")
-                            null
-                        }
-                    }
-
-                    if (bitmap == null) {
-                        delay(100) // ⭐ 실패 시 더 길게 대기
+                    if (!isReferenceSet) {
+                        delay(100)
                         continue
                     }
 
-                    val isFront = controller.isFrontCamera()
-
-                    realtimeAnalyzer?.analyzeFrame(
-                        bitmap = bitmap,
-                        isFrontCamera = isFront,
-                        currentAspectRatio = CameraAspectRatio.RATIO_16_9
-                    )
-
-                    // 분석 완료 후 recycle
-                    if (!bitmap.isRecycled) {
-                        bitmap.recycle()
+                    // ✅ Main 스레드에서 안전하게 Bitmap 복사
+                    val bitmap = withContext(Dispatchers.Main) {
+                        getBitmapFromTextureViewSafely()
                     }
 
+                    if (bitmap == null) {
+                        consecutiveFailures++
+
+                        // ⭐ 연속 3회 이상 실패하면 UI 업데이트
+                        if (consecutiveFailures >= 3) {
+                            withContext(Dispatchers.Main) {
+                                setAllStatusGray()
+                                feedbackMessageContainer.visibility = View.VISIBLE
+                                feedbackMessage.text = "카메라 프리뷰 대기 중..."
+                            }
+                        }
+
+                        delay(100)
+                        continue
+                    }
+
+                    // ⭐ 백그라운드에서 분석 수행
+                    try {
+                        val isFront = controller.isFrontCamera()
+
+                        realtimeAnalyzer?.analyzeFrame(
+                            bitmap = bitmap,
+                            isFrontCamera = isFront,
+                            currentAspectRatio = CameraAspectRatio.RATIO_16_9
+                        )
+
+                        // ⭐ 분석 성공 시 실패 카운터 초기화
+                        consecutiveFailures = 0
+
+                    } catch (e: Exception) {
+                        println("⚠️ 분석 중 오류: ${e.message}")
+                        consecutiveFailures++
+
+                        // ⭐ 연속 실패 시 UI 업데이트
+                        if (consecutiveFailures >= 3) {
+                            withContext(Dispatchers.Main) {
+                                setAllStatusGray()
+                                feedbackMessageContainer.visibility = View.VISIBLE
+                                feedbackMessage.text = "포즈 인식 실패"
+                            }
+                        }
+                    } finally {
+                        // 분석 완료 후 반드시 recycle
+                        if (!bitmap.isRecycled) {
+                            bitmap.recycle()
+                        }
+                    }
+
+                } catch (e: CancellationException) {
+                    break
                 } catch (e: Exception) {
-                    if (e !is CancellationException) {
-                        println("⚠️ 실시간 분석 오류: ${e.message}")
-                    }
-                    delay(100)
+                    println("⚠️ 실시간 분석 오류: ${e.message}")
+                    consecutiveFailures++
+                    delay(300)
                 }
             }
+            println("🛑 실시간 분석 루프 종료")
         }
-        */
+    }
+
+    // ✅ TextureView에서 안전하게 Bitmap 가져오기
+    private fun getBitmapFromTextureViewSafely(): Bitmap? {
+        return try {
+            // TextureView 상태 체크
+            if (!binding.textureView.isAvailable) {
+                return null
+            }
+
+            val width = binding.textureView.width
+            val height = binding.textureView.height
+
+            if (width <= 0 || height <= 0) {
+                return null
+            }
+
+            // ⭐ 축소된 크기로 직접 Bitmap 생성
+            val scale = 0.4f
+            val scaledWidth = (width * scale).toInt()
+            val scaledHeight = (height * scale).toInt()
+
+            if (scaledWidth <= 0 || scaledHeight <= 0) {
+                return null
+            }
+
+            // ⭐ 새 Bitmap을 만들어서 TextureView 내용을 그림
+            val bitmap = Bitmap.createBitmap(scaledWidth, scaledHeight, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+
+            // 스케일 적용
+            canvas.scale(scale, scale)
+
+            // TextureView 내용을 canvas에 그림
+            binding.textureView.getBitmap(bitmap)
+
+            bitmap
+
+        } catch (e: Exception) {
+            println("⚠️ Bitmap 생성 실패: ${e.message}")
+            null
+        }
     }
 
     // ✅ 실시간 포즈 분석 중지
     private fun stopRealtimeAnalysis() {
         realtimeAnalysisJob?.cancel()
         realtimeAnalysisJob = null
+        lastAnalysisTime = 0L
         println("🛑 실시간 포즈 분석 중지")
     }
 
@@ -646,6 +766,7 @@ class MainActivity : AppCompatActivity() {
             feedbackStatusContainer.visibility = View.VISIBLE
 
             if (feedback.isEmpty()) {
+                // ⭐ 피드백이 비어있으면 = 모든 조건 만족 = 녹색
                 feedbackMessageContainer.visibility = View.GONE
                 setAllStatusGreen()
             } else {
@@ -654,6 +775,23 @@ class MainActivity : AppCompatActivity() {
                 feedbackMessage.text = topFeedback.message
                 updateStatusIcons(feedback)
                 println("📢 피드백: [${topFeedback.category}] ${topFeedback.message}")
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+
+        // 레퍼런스 모드 유지 확인
+        if (intent?.getBooleanExtra("KEEP_REFERENCE_MODE", false) == true) {
+            println("🔄 레퍼런스 모드로 복귀")
+            // 레퍼런스가 설정되어 있으면 피드백 UI 표시
+            if (isReferenceSet && isAIInitialized) {
+                showFeedbackUI()
+                binding.textureView.postDelayed({
+                    startRealtimeAnalysis()
+                }, 500)
             }
         }
     }
@@ -690,8 +828,13 @@ class MainActivity : AppCompatActivity() {
                 fb.category.contains("composition") -> iconComposition.setImageDrawable(grayDrawable)
                 fb.category.contains("gaze") || fb.category.contains("look") -> iconGaze.setImageDrawable(grayDrawable)
                 fb.category == "no_face" -> {
+                    // ⭐ 얼굴 없음 = 모든 항목 미확인
                     iconPose.setImageDrawable(grayDrawable)
                     iconPosition.setImageDrawable(grayDrawable)
+                    iconFraming.setImageDrawable(grayDrawable)
+                    iconAngle.setImageDrawable(grayDrawable)
+                    iconComposition.setImageDrawable(grayDrawable)
+                    iconGaze.setImageDrawable(grayDrawable)
                 }
             }
         }
@@ -737,17 +880,15 @@ class MainActivity : AppCompatActivity() {
     // ---------------------------
     private fun initButtons() {
         binding.btnShutter.setOnClickListener {
-            // ⭐ 안전하게 중지
-            lifecycleScope.launch {
-                stopRealtimeAnalysis()
-                delay(100) // 100ms 대기
+            // ⭐ 촬영 전 실시간 분석 완전 중지
+            realtimeAnalysisJob?.cancel()
+            realtimeAnalysisJob = null
 
-                withContext(Dispatchers.Main) {
-                    controller.takePictureWithTimer()
-                }
-            }
+            // 약간의 딜레이 후 촬영
+            binding.btnShutter.postDelayed({
+                controller.takePictureWithTimer()
+            }, 150)
         }
-
 
         binding.btnOptions.setOnClickListener {
             toggleOptionBar()
@@ -989,17 +1130,21 @@ class MainActivity : AppCompatActivity() {
         controller.setAllAuto()
         isAllAuto = true
 
-        // ✅ 레퍼런스가 설정된 경우에만 분석 시작
+        // ✅ 레퍼런스가 설정된 경우에만 분석 시작 (약간 딜레이)
         if (isReferenceSet && isAIInitialized) {
             showFeedbackUI()
-            startRealtimeAnalysis()
+            // ⭐ 카메라 준비 후 분석 시작
+            binding.textureView.postDelayed({
+                startRealtimeAnalysis()
+            }, 500)
         }
     }
 
     override fun onPause() {
+        // ⭐ 먼저 분석 중지
+        stopRealtimeAnalysis()
         controller.cancelTimer()
         controller.onPause()
-        stopRealtimeAnalysis()
         super.onPause()
     }
 
