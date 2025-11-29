@@ -52,7 +52,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@id/bottomBar"/>
 
-    <!-- 🔥 하단 아이콘 바 (4개 아이콘) -->
+    <!-- 🔥 하단 아이콘 바 (3개 아이콘 - 편집 버튼 제거) -->
     <LinearLayout
         android:id="@+id/bottomBar"
         android:layout_width="match_parent"
@@ -60,38 +60,41 @@
         android:gravity="center"
         android:orientation="horizontal"
         android:background="#FFFFFF"
-        android:padding="12dp"
+        android:paddingStart="60dp"
+        android:paddingEnd="60dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
+        <!-- 공유 버튼 -->
         <ImageView
             android:id="@+id/btnShare"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:layout_weight="1"
-            android:src="@drawable/upload"/>
+            android:src="@drawable/upload"
+            android:scaleType="fitCenter"/>
 
+        <!-- 하트 버튼 -->
         <ImageView
             android:id="@+id/btnFavorite"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:layout_weight="1"
-            android:src="@drawable/ic_heart_empty"/>
+            android:src="@drawable/ic_heart_empty"
+            android:scaleType="fitCenter"/>
 
-        <ImageView
-            android:id="@+id/btnEdit"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:layout_weight="1"
-            android:src="@drawable/edit"/>
-
+        <!-- 삭제 버튼 -->
         <ImageView
             android:id="@+id/btnDelete"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
             android:layout_weight="1"
-            android:src="@drawable/delete"/>
+            android:src="@drawable/delete"
+            android:scaleType="fitCenter"/>
+
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -132,6 +132,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ✅ AI 시스템 초기화
+    // ✅ AI 시스템 초기화 (원래 코드 유지)
     private fun initAISystem() {
         Thread {
             try {
@@ -157,7 +158,6 @@ class MainActivity : AppCompatActivity() {
                     println("========================================")
                     Toast.makeText(this, "✅ AI 시스템 준비 완료", Toast.LENGTH_SHORT).show()
 
-                    // ✅ 피드백 UI 업데이트 리스너 시작
                     startFeedbackUIUpdates()
                 }
 
@@ -198,7 +198,7 @@ class MainActivity : AppCompatActivity() {
             onSaved = { uri ->
                 val bitmap = uriToBitmap(uri)
                 if (bitmap != null) {
-                    processCapturedPhoto(bitmap)
+                    processCapturedPhoto(bitmap, uri)
                 }
             },
             previewContainer = binding.previewContainer
@@ -247,44 +247,204 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ✅ 촬영된 사진 처리
-    private fun processCapturedPhoto(bitmap: Bitmap) {
-        if (!isAIInitialized || poseEstimationService == null) {
-            runOnUiThread {
-                Toast.makeText(this, "AI 시스템 로딩 중...", Toast.LENGTH_SHORT).show()
+    private fun processCapturedPhoto(bitmap: Bitmap, uri: Uri) {
+        try {
+            println("📸 processCapturedPhoto 진입")
+            println("📸 현재 스레드: ${Thread.currentThread().name}")
+            println("📸 bitmap null?: ${bitmap == null}")
+
+            if (bitmap == null) {
+                println("❌ bitmap이 null!")
+                return
             }
-            return
+
+            println("📸 bitmap isRecycled?: ${bitmap.isRecycled}")
+
+            if (bitmap.isRecycled) {
+                println("❌ bitmap이 이미 recycle됨!")
+                runOnUiThread {
+                    Toast.makeText(this, "이미지 처리 오류", Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+
+            println("📸 bitmap 크기: ${bitmap.width}x${bitmap.height}")
+            println("📸 uri: $uri")
+            println("📸 isAIInitialized: $isAIInitialized")
+            println("📸 poseEstimationService null?: ${poseEstimationService == null}")
+            println("📸 isReferenceSet: $isReferenceSet")
+            println("📸 referenceBitmap null?: ${referenceBitmap == null}")
+
+            if (!isAIInitialized || poseEstimationService == null) {
+                println("❌ AI 시스템 미초기화")
+                runOnUiThread {
+                    Toast.makeText(this, "AI 시스템 로딩 중...", Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+
+            if (!isReferenceSet || referenceBitmap == null) {
+                println("❌ 레퍼런스 미설정")
+                runOnUiThread {
+                    Toast.makeText(this, "레퍼런스를 먼저 선택해주세요", Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+
+            // referenceBitmap도 체크
+            if (referenceBitmap!!.isRecycled) {
+                println("❌ referenceBitmap이 이미 recycle됨!")
+                runOnUiThread {
+                    Toast.makeText(this, "레퍼런스 이미지 오류", Toast.LENGTH_SHORT).show()
+                }
+                return
+            }
+
+            println("📸 모든 체크 통과, 로딩 오버레이 표시")
+
+            // ⭐ 1. 로딩 오버레이 표시
+            runOnUiThread {
+                showLoadingOverlay()
+            }
+
+            Thread {
+                try {
+                    println("📸 백그라운드 스레드 시작")
+                    println("📸 촬영 사진 분석 시작...")
+
+                    val capturedResult = poseEstimationService?.detectPose(bitmap)
+                    println("📸 capturedResult: ${capturedResult?.keypoints?.size ?: "null"}")
+
+                    if (capturedResult == null) {
+                        println("❌ capturedResult가 null")
+                        runOnUiThread {
+                            hideLoadingOverlay()
+                            Toast.makeText(this, "포즈를 찾을 수 없습니다", Toast.LENGTH_SHORT).show()
+                        }
+                        return@Thread
+                    }
+
+                    println("📸 레퍼런스 재분석 시작...")
+                    val referenceResult = poseEstimationService?.detectPose(referenceBitmap!!)
+                    println("📸 referenceResult: ${referenceResult?.keypoints?.size ?: "null"}")
+
+                    if (referenceResult == null) {
+                        println("❌ referenceResult가 null")
+                        runOnUiThread {
+                            hideLoadingOverlay()
+                            Toast.makeText(this, "레퍼런스 포즈를 분석할 수 없습니다", Toast.LENGTH_SHORT).show()
+                        }
+                        return@Thread
+                    }
+
+                    println("📊 점수 계산 시작...")
+                    val score = calculatePoseSimilarity(capturedResult, referenceResult)
+                    println("📊 점수: $score")
+
+                    val feedbackMsg = generateFeedbackMessage(score)
+                    println("✅ 분석 완료!")
+
+                    runOnUiThread {
+                        println("🚀 FeedbackScoreActivity 이동")
+                        hideLoadingOverlay()
+
+                        val intent = Intent(this, com.example.camera2app.gallery.FeedbackScoreActivity::class.java).apply {
+                            putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_CAPTURED_URI, uri.toString())
+                            putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_REFERENCE_URI, "reference_uri_placeholder")
+                            putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_SCORE, score)
+                            putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE, feedbackMsg)
+                        }
+                        startActivity(intent)
+                    }
+
+                } catch (e: Exception) {
+                    println("❌ 백그라운드 스레드 크래시: ${e.message}")
+                    e.printStackTrace()
+                    runOnUiThread {
+                        hideLoadingOverlay()
+                        Toast.makeText(this, "포즈 분석 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }.start()
+
+        } catch (e: Exception) {
+            println("❌❌❌ processCapturedPhoto 최상위 크래시: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
+    // ⭐ 로딩 오버레이 변수
+    private var loadingOverlay: View? = null
+
+    // ⭐ 로딩 오버레이 표시
+    private fun showLoadingOverlay() {
+        if (loadingOverlay != null) return
+
+        val inflater = LayoutInflater.from(this)
+        loadingOverlay = inflater.inflate(R.layout.loading_overlay, null)
+
+        val rootView = findViewById<ViewGroup>(android.R.id.content)
+        rootView.addView(loadingOverlay)
+    }
+
+    // ⭐ 로딩 오버레이 숨기기
+    private fun hideLoadingOverlay() {
+        loadingOverlay?.let {
+            val rootView = findViewById<ViewGroup>(android.R.id.content)
+            rootView.removeView(it)
+            loadingOverlay = null
+        }
+    }
+
+
+    // ⭐ 포즈 유사도 계산 (0.0 ~ 10.0) - 안전한 버전
+    private fun calculatePoseSimilarity(
+        captured: RTMPoseResult,
+        reference: RTMPoseResult
+    ): Float {
+        var totalDistance = 0f
+        var count = 0
+
+        // ⭐ 두 배열 중 더 작은 크기까지만 비교 (IndexOutOfBounds 방지)
+        val minSize = minOf(captured.keypoints.size, reference.keypoints.size)
+
+        println("📊 키포인트 비교: captured=${captured.keypoints.size}, reference=${reference.keypoints.size}, 비교할 개수=$minSize")
+
+        if (minSize == 0) return 5.0f  // 기본값
+
+        for (i in 0 until minSize) {
+            val cap = captured.keypoints[i]
+            val ref = reference.keypoints[i]
+
+            // 신뢰도가 낮은 키포인트는 제외
+            if (cap.confidence < 0.3f || ref.confidence < 0.3f) continue
+
+            val dx = cap.x - ref.x
+            val dy = cap.y - ref.y
+            val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+
+            totalDistance += distance
+            count++
         }
 
-        Thread {
-            try {
-                println("📸 촬영 사진 분석 중...")
-                val result = poseEstimationService?.detectPose(bitmap)
+        if (count == 0) return 5.0f
 
-                if (result == null) {
-                    runOnUiThread {
-                        Toast.makeText(this, "포즈를 찾을 수 없습니다", Toast.LENGTH_SHORT).show()
-                    }
-                    return@Thread
-                }
+        val avgDistance = totalDistance / count
+        val score = (10.0f - avgDistance * 10f).coerceIn(0f, 10f)
 
-                println("✅ 포즈 검출 완료: ${result.keypoints.size}개 키포인트")
+        println("📊 유사도 계산 완료: avgDistance=$avgDistance, score=$score")
 
-                val highConf = result.keypoints.count { it.confidence > 0.5f }
-                runOnUiThread {
-                    Toast.makeText(
-                        this,
-                        "포즈 감지: ${highConf}개 키포인트 (신뢰도 >0.5)",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+        return score
+    }
 
-            } catch (e: Exception) {
-                e.printStackTrace()
-                runOnUiThread {
-                    Toast.makeText(this, "포즈 분석 실패: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }.start()
+    // ⭐ 피드백 메시지 생성
+    private fun generateFeedbackMessage(score: Float): String {
+        return when {
+            score >= 9.0f -> "완벽해요! 레퍼런스와 거의 동일한 포즈입니다!"
+            score >= 7.0f -> "좋아요! 조금만 더 자세를 조정하면 완벽할 것 같아요."
+            score >= 5.0f -> "카메라 셔터도를 약간 높이면서,\n가까운 여러 넓은면 더 괜찮은\n비슷한 이미지를 얻을 수 있습니다!"
+            else -> "포즈를 다시 한번 확인해보세요.\n레퍼런스와 차이가 많이 나요."
+        }
     }
 
     // ✅ 레퍼런스 이미지 선택 결과 처리
@@ -360,7 +520,14 @@ class MainActivity : AppCompatActivity() {
 
 
     // ✅ 실시간 포즈 분석 시작
+    // ✅ 실시간 포즈 분석 시작
     private fun startRealtimeAnalysis() {
+        // ⭐⭐⭐ 임시로 완전히 비활성화
+        println("⚠️ 실시간 분석 임시 비활성화 (TextureView Bitmap 충돌 방지)")
+        return
+
+        // ========== 아래 코드는 모두 실행 안 됨 ==========
+        /*
         // 레퍼런스가 설정되지 않았으면 시작하지 않음
         if (!isReferenceSet) {
             println("⚠️ 레퍼런스가 설정되지 않아 분석을 시작하지 않습니다")
@@ -389,23 +556,38 @@ class MainActivity : AppCompatActivity() {
                     val bitmap = withContext(Dispatchers.Main) {
                         try {
                             val original = binding.textureView.bitmap
-                            if (original != null && !original.isRecycled && original.width > 0 && original.height > 0) {
-                                // ARGB_8888로 복사 (color space 문제 해결)
-                                Bitmap.createBitmap(original.width, original.height, Bitmap.Config.ARGB_8888).also { copy ->
+
+                            // ⭐ 더 안전한 체크
+                            if (original == null || original.isRecycled) {
+                                return@withContext null
+                            }
+
+                            if (original.width <= 0 || original.height <= 0) {
+                                return@withContext null
+                            }
+
+                            // ⭐ 복사 실패해도 앱 안 죽게
+                            try {
+                                Bitmap.createBitmap(
+                                    original.width,
+                                    original.height,
+                                    Bitmap.Config.ARGB_8888
+                                ).also { copy ->
                                     val canvas = android.graphics.Canvas(copy)
                                     canvas.drawBitmap(original, 0f, 0f, null)
                                 }
-                            } else {
-                                null
+                            } catch (e: Exception) {
+                                null // ⭐ 복사 실패하면 null 반환
                             }
+
                         } catch (e: Exception) {
-                            println("⚠️ Bitmap 복사 실패: ${e.message}")
+                            println("⚠️ Bitmap 접근 실패: ${e.message}")
                             null
                         }
                     }
 
                     if (bitmap == null) {
-                        delay(50)
+                        delay(100) // ⭐ 실패 시 더 길게 대기
                         continue
                     }
 
@@ -430,6 +612,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        */
     }
 
     // ✅ 실시간 포즈 분석 중지
@@ -553,12 +736,18 @@ class MainActivity : AppCompatActivity() {
     // 버튼들
     // ---------------------------
     private fun initButtons() {
-        binding.btnShutter.setOnClickListener { controller.takePictureWithTimer() }
+        binding.btnShutter.setOnClickListener {
+            // ⭐ 안전하게 중지
+            lifecycleScope.launch {
+                stopRealtimeAnalysis()
+                delay(100) // 100ms 대기
 
-        binding.btnSwitch.setOnClickListener {
-            controller.switchCamera()
-            controller.setFlashMode(Camera2Controller.FlashMode.OFF)
+                withContext(Dispatchers.Main) {
+                    controller.takePictureWithTimer()
+                }
+            }
         }
+
 
         binding.btnOptions.setOnClickListener {
             toggleOptionBar()

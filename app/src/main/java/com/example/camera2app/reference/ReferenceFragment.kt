@@ -55,14 +55,22 @@ class ReferenceFragment : Fragment() {
         loadImages()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // ⭐ My 탭은 돌아올 때마다 새로고침
+        if (category == ReferenceCategory.MY) {
+            loadImages()
+        }
+    }
+
     private fun loadImages() {
         val images = when (category) {
-            ReferenceCategory.MY -> LikeManager.getLikedImages()
-            ReferenceCategory.HOT -> getHotImages()
-            ReferenceCategory.CAFE -> getCafeImages()
-            ReferenceCategory.WINTER -> getWinterImages()
-            ReferenceCategory.STREET -> getStreetImages()
-            ReferenceCategory.LANDMARK -> getLandmarkImages()
+            ReferenceCategory.MY -> getMyImages()  // ⭐ 변경!
+            ReferenceCategory.HOT -> getHotImages().map { ReferenceImage.ResourceImage(it) }
+            ReferenceCategory.CAFE -> getCafeImages().map { ReferenceImage.ResourceImage(it) }
+            ReferenceCategory.WINTER -> getWinterImages().map { ReferenceImage.ResourceImage(it) }
+            ReferenceCategory.STREET -> getStreetImages().map { ReferenceImage.ResourceImage(it) }
+            ReferenceCategory.LANDMARK -> getLandmarkImages().map { ReferenceImage.ResourceImage(it) }
         }
 
         // My 탭이고 비어있으면 emptyView 표시
@@ -84,6 +92,21 @@ class ReferenceFragment : Fragment() {
         }
     }
 
+    // ⭐ My 탭: Int (drawable) + String (URI) 둘 다 로드
+    private fun getMyImages(): List<ReferenceImage> {
+        val result = mutableListOf<ReferenceImage>()
+
+        // 1. drawable 리소스로 좋아요한 이미지
+        val likedResources = LikeManager.getLikedImages()
+        result.addAll(likedResources.map { ReferenceImage.ResourceImage(it) })
+
+        // 2. URI로 좋아요한 이미지 (갤러리에서 추가)
+        val likedUris = LikeManager.getLikedUris()
+        result.addAll(likedUris.map { ReferenceImage.UriImage(it) })
+
+        return result
+    }
+
     // 각 카테고리별 이미지 리소스 (예시)
 
     private fun getHotImages() = listOf(
@@ -95,7 +118,6 @@ class ReferenceFragment : Fragment() {
         R.drawable.hot6,
         R.drawable.hot7,
         R.drawable.hot8
-
     )
 
     private fun getCafeImages() = listOf(
@@ -107,7 +129,6 @@ class ReferenceFragment : Fragment() {
         R.drawable.cafe6,
         R.drawable.cafe7,
         R.drawable.cafe8
-
     )
 
     private fun getWinterImages() = listOf(
@@ -119,7 +140,6 @@ class ReferenceFragment : Fragment() {
         R.drawable.winter6,
         R.drawable.winter7,
         R.drawable.winter8
-
     )
 
     private fun getStreetImages() = listOf(
@@ -142,6 +162,5 @@ class ReferenceFragment : Fragment() {
         R.drawable.landmark6,
         R.drawable.landmark7,
         R.drawable.landmark8
-
     )
 }

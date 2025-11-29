@@ -186,34 +186,39 @@ class Camera2Controller(
         if (!flashAvailable()) return
 
         when (flashMode) {
-
             FlashMode.OFF -> {
                 builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
-                builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
             }
 
             FlashMode.AUTO -> {
-                builder.set(
-                    CaptureRequest.FLASH_MODE,
-                    if (forPreview) CameraMetadata.FLASH_MODE_OFF
-                    else CameraMetadata.FLASH_MODE_SINGLE
-                )
+                // ⭐ 항상 자동 플래시 모드로 설정
                 builder.set(
                     CaptureRequest.CONTROL_AE_MODE,
                     CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH
                 )
+                if (!forPreview) {
+                    builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_SINGLE)
+                }
             }
 
             FlashMode.ON -> {
-                builder.set(
-                    CaptureRequest.FLASH_MODE,
-                    if (forPreview) CameraMetadata.FLASH_MODE_TORCH   // ⭐ 이것만 바꾸면 해결!
-                    else CameraMetadata.FLASH_MODE_SINGLE
-                )
-                builder.set(
-                    CaptureRequest.CONTROL_AE_MODE,
-                    CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH
-                )
+                if (manualEnabled) {
+                    builder.set(
+                        CaptureRequest.FLASH_MODE,
+                        if (forPreview) CameraMetadata.FLASH_MODE_TORCH
+                        else CameraMetadata.FLASH_MODE_SINGLE
+                    )
+                } else {
+                    builder.set(
+                        CaptureRequest.CONTROL_AE_MODE,
+                        CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH
+                    )
+                    builder.set(
+                        CaptureRequest.FLASH_MODE,
+                        if (forPreview) CameraMetadata.FLASH_MODE_TORCH
+                        else CameraMetadata.FLASH_MODE_SINGLE
+                    )
+                }
             }
         }
     }
@@ -540,9 +545,11 @@ class Camera2Controller(
 
                     val req = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                         addTarget(previewSurface)
+
+                        // ⭐ 순서 변경: 플래시를 먼저 적용
+                        applyFlash(this, true)
                         applyCommonControls(this, preview = true)
                         applyColorAuto(this)
-                        applyFlash(this, true)
                     }
 
                     s.setRepeatingRequest(req.build(), null, bgHandler)
@@ -553,6 +560,7 @@ class Camera2Controller(
             }, bgHandler
         )
     }
+
 
     // =========================================================================================
     // takePicture()
@@ -595,12 +603,13 @@ class Camera2Controller(
             addTarget(jpegSurface)
 
             set(CaptureRequest.JPEG_ORIENTATION, lastJpegOrientation)
+
+            // ⭐ 순서 변경: 플래시를 먼저 적용
+            applyFlash(this, false)
             applyCommonControls(this, preview = false)
             applyColorAuto(this)
-            applyFlash(this, false)
             applyZoomAndAspect(this)
 
-            // quality boost for still capture
             set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY)
             set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
             set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_HIGH_QUALITY)
@@ -608,7 +617,6 @@ class Camera2Controller(
 
         session?.capture(req.build(), null, bgHandler)
     }
-
     // =========================================================================================
     // Auto / Manual WB / Color controls
     // =========================================================================================
@@ -634,7 +642,39 @@ class Camera2Controller(
     // Common preview/still controls
     // =========================================================================================
     private fun applyCommonControls(builder: CaptureRequest.Builder, preview: Boolean) {
-        if (manualEnabled) {
+
+        // ⭐⭐⭐ AUTO 플래시 전용 처리 - 최우선 ⭐⭐⭐
+        if (flashMode == FlashMode.AUTO) {
+            Log.d(TAG, "applyCommonControls: AUTO FLASH MODE")
+
+            // 1. CONTROL_MODE를 명시적으로 AUTO로 설정 (필수!)
+            builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
+
+            // 2. AE는 applyFlash()에서 이미 ON_AUTO_FLASH로 설정됨
+
+            // 3. AF 설정
+            builder.set(
+                CaptureRequest.CONTROL_AF_MODE,
+                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+            )
+
+            // 4. AWB 자동
+            builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO)
+
+            // 5. FPS 설정
+            builder.set(
+                CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                Range(targetFps, targetFps)
+            )
+
+            // 6. SENSOR 설정은 하지 않음 (AE가 자동으로 조절)
+
+            Log.d(TAG, "AUTO flash: CONTROL_MODE=AUTO, AE=ON_AUTO_FLASH (from applyFlash)")
+
+        } else if (manualEnabled) {
+            // ========== 수동 모드 (AUTO 플래시 아닐 때만) ==========
+            Log.d(TAG, "applyCommonControls: MANUAL MODE")
+
             builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_OFF)
             builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
 
@@ -664,7 +704,11 @@ class Camera2Controller(
                 )
                 builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_FAST)
             }
+
         } else {
+            // ========== 자동 모드 ==========
+            Log.d(TAG, "applyCommonControls: AUTO MODE")
+
             builder.set(
                 CaptureRequest.CONTROL_AF_MODE,
                 CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
@@ -680,6 +724,7 @@ class Camera2Controller(
 
         applyZoomAndAspect(builder)
     }
+
 
     // ★ 센서는 줌만, 비율 crop 안 함
     // ★ 센서 크롭: 줌 + 화면비 모두 적용
@@ -982,14 +1027,14 @@ class Camera2Controller(
         val req = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
             addTarget(previewSurface)
 
+            // ⭐ 순서 변경: 플래시를 먼저 적용
+            applyFlash(this, true)
             applyCommonControls(this, preview = true)
             applyColorAuto(this)
-            applyFlash(this, true)
         }
 
         session?.setRepeatingRequest(req.build(), null, bgHandler)
         textureView.post { applyCenterCropTransform() }
-
     }
 
     // =========================================================================================

@@ -2,6 +2,7 @@ package com.example.camera2app.gallery
 
 import android.Manifest
 import android.content.ContentUris
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.net.Uri
@@ -10,13 +11,16 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.camera2app.databinding.ActivityGalleryBinding
 import com.example.camera2app.databinding.ActivityGallerySelectableBinding
+import com.example.camera2app.reference.LikeManager
 
 class GalleryActivity : ComponentActivity() {
 
@@ -36,6 +40,9 @@ class GalleryActivity : ComponentActivity() {
 
         normalBinding = ActivityGalleryBinding.inflate(layoutInflater)
         setContentView(normalBinding.root)
+
+        // ★ LikeManager 초기화
+        LikeManager.init(this)
 
         setupNormalUI()
         ensurePermissionThenLoad()
@@ -89,9 +96,27 @@ class GalleryActivity : ComponentActivity() {
             }
         }
 
+        // ★ 닫기 버튼
         selectBinding.btnClose.setOnClickListener {
             setContentView(normalBinding.root)
             setupNormalUI()
+        }
+
+        // ========== 하단 메뉴 버튼 기능 ==========
+
+        // ⭐ 공유 버튼
+        selectBinding.btnShare.setOnClickListener {
+            shareSelectedPhotos()
+        }
+
+        // ⭐ 하트 버튼 (레퍼런스 My에 추가)
+        selectBinding.btnFav.setOnClickListener {
+            addToReference()
+        }
+
+        // ⭐ 삭제 버튼
+        selectBinding.btnDelete.setOnClickListener {
+            confirmAndDeletePhotos()
         }
 
         updateBottomMenu()
@@ -100,6 +125,179 @@ class GalleryActivity : ComponentActivity() {
     private fun updateBottomMenu() {
         selectBinding.bottomMenu.visibility =
             if (selectedPhotos.isNotEmpty()) View.VISIBLE else View.GONE
+    }
+
+    // ========== 공유 기능 ==========
+    private fun shareSelectedPhotos() {
+        if (selectedPhotos.isEmpty()) {
+            Toast.makeText(this, "공유할 사진을 선택하세요", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            val shareIntent = Intent().apply {
+                if (selectedPhotos.size == 1) {
+                    // 단일 사진
+                    action = Intent.ACTION_SEND
+                    putExtra(Intent.EXTRA_STREAM, selectedPhotos[0])
+                    type = "image/*"
+                } else {
+                    // 여러 사진
+                    action = Intent.ACTION_SEND_MULTIPLE
+                    putParcelableArrayListExtra(
+                        Intent.EXTRA_STREAM,
+                        ArrayList(selectedPhotos)
+                    )
+                    type = "image/*"
+                }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            startActivity(Intent.createChooser(shareIntent, "사진 공유"))
+            Toast.makeText(this, "${selectedPhotos.size}개 사진 공유", Toast.LENGTH_SHORT).show()
+
+        } catch (e: Exception) {
+            Toast.makeText(this, "공유 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+            Log.e("GALLERY", "Share failed", e)
+        }
+    }
+
+    // ========== 레퍼런스에 추가 기능 ==========
+    private fun addToReference() {
+        if (selectedPhotos.isEmpty()) {
+            Toast.makeText(this, "추가할 사진을 선택하세요", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            // LikeManager를 사용해서 각 사진을 My에 추가
+            selectedPhotos.forEach { uri ->
+                LikeManager.addLike(uri.toString())
+            }
+
+            Toast.makeText(
+                this,
+                "${selectedPhotos.size}개 사진이 레퍼런스에 추가되었습니다",
+                Toast.LENGTH_SHORT
+            ).show()
+
+            // 선택 해제 및 일반 모드로 복귀
+            selectedPhotos.clear()
+            setContentView(normalBinding.root)
+            setupNormalUI()
+
+        } catch (e: Exception) {
+            Toast.makeText(this, "추가 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+            Log.e("GALLERY", "Add to reference failed", e)
+        }
+    }
+
+    // ========== 삭제 기능 ==========
+    private fun confirmAndDeletePhotos() {
+        if (selectedPhotos.isEmpty()) {
+            Toast.makeText(this, "삭제할 사진을 선택하세요", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 삭제 확인 다이얼로그
+        AlertDialog.Builder(this)
+            .setTitle("사진 삭제")
+            .setMessage("선택한 ${selectedPhotos.size}개의 사진을 삭제하시겠습니까?")
+            .setPositiveButton("삭제") { _, _ ->
+                deleteSelectedPhotos()
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private fun deleteSelectedPhotos() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11 (API 30) 이상: MediaStore의 createDeleteRequest 사용
+            deletePhotosModern()
+        } else {
+            // Android 10 이하: 직접 삭제
+            deletePhotosLegacy()
+        }
+    }
+
+    // Android 11+ 삭제 방식
+    private fun deletePhotosModern() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val pendingIntent = MediaStore.createDeleteRequest(
+                    contentResolver,
+                    selectedPhotos
+                )
+
+                // 시스템 다이얼로그 표시
+                startIntentSenderForResult(
+                    pendingIntent.intentSender,
+                    DELETE_REQUEST_CODE,
+                    null, 0, 0, 0
+                )
+
+            } catch (e: Exception) {
+                Toast.makeText(this, "삭제 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+                Log.e("GALLERY", "Delete failed", e)
+            }
+        }
+    }
+
+    // Android 10 이하 삭제 방식
+    private fun deletePhotosLegacy() {
+        var successCount = 0
+        var failCount = 0
+
+        selectedPhotos.forEach { uri ->
+            try {
+                val deleted = contentResolver.delete(uri, null, null)
+                if (deleted > 0) successCount++ else failCount++
+            } catch (e: Exception) {
+                failCount++
+                Log.e("GALLERY", "Failed to delete: $uri", e)
+            }
+        }
+
+        // 결과 메시지
+        val message = if (failCount == 0) {
+            "${successCount}개 사진이 삭제되었습니다"
+        } else {
+            "${successCount}개 삭제 성공, ${failCount}개 실패"
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+
+        // 삭제된 사진을 목록에서 제거
+        photos.removeAll(selectedPhotos)
+        selectedPhotos.clear()
+
+        // UI 갱신
+        setContentView(normalBinding.root)
+        setupNormalUI()
+    }
+
+    // 삭제 요청 결과 처리 (Android 11+)
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == DELETE_REQUEST_CODE) {
+            if (resultCode == RESULT_OK) {
+                Toast.makeText(
+                    this,
+                    "${selectedPhotos.size}개 사진이 삭제되었습니다",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                // 삭제된 사진을 목록에서 제거
+                photos.removeAll(selectedPhotos)
+                selectedPhotos.clear()
+
+                // UI 갱신
+                setContentView(normalBinding.root)
+                setupNormalUI()
+            } else {
+                Toast.makeText(this, "삭제가 취소되었습니다", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     // ---------------------- Permission / Load Photos ----------------------
@@ -202,5 +400,9 @@ class GalleryActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    companion object {
+        private const val DELETE_REQUEST_CODE = 1001
     }
 }
