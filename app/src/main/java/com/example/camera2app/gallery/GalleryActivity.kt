@@ -354,6 +354,9 @@ class GalleryActivity : ComponentActivity() {
 
         Log.d("GALLERY", "photos loaded = ${photos.size}")
 
+        // ★ 추가: 공유 홀더에 저장
+        PhotoListHolder.photos = photos.toList()
+
         if (inSelectMode) {
             setContentView(selectBinding.root)
             setupSelectUI()
@@ -361,6 +364,8 @@ class GalleryActivity : ComponentActivity() {
             setContentView(normalBinding.root)
             setupNormalUI()
         }
+
+
     }
 
     // ---------------------- Utility ----------------------

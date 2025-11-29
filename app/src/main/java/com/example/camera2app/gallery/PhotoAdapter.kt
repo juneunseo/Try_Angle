@@ -9,11 +9,10 @@ import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.camera2app.databinding.ItemPhotoBinding
 
-// PhotoAdapter.kt 수정
 class PhotoAdapter(
     private val context: Context,
     private val photos: List<Uri>,
-    private val onLongClick: ((Int) -> Unit)? = null  // ★ 롱클릭 콜백 추가
+    private val onLongClick: ((Int) -> Unit)? = null
 ) : RecyclerView.Adapter<PhotoAdapter.PhotoVH>() {
 
     inner class PhotoVH(val b: ItemPhotoBinding) : RecyclerView.ViewHolder(b.root)
@@ -38,10 +37,11 @@ class PhotoAdapter(
             .centerCrop()
             .into(holder.b.thumb)
 
-        // 일반 클릭 → 프리뷰
+        // ★ 일반 클릭 → 프리뷰 (위치만 전달)
         holder.b.root.setOnClickListener {
-            val intent = Intent(context, PreviewActivity::class.java)
-            intent.putExtra(PreviewActivity.EXTRA_IMAGE_URI, uri.toString())
+            val intent = Intent(context, PreviewActivity::class.java).apply {
+                putExtra(PreviewActivity.EXTRA_POSITION, position)
+            }
             context.startActivity(intent)
         }
 
