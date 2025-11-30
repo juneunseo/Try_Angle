@@ -1,46 +1,60 @@
 package com.example.camera2app.ai
 
-import android.graphics.Bitmap
-import android.graphics.PointF
+import android.graphics.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.Date
-import kotlin.math.*
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.max
+import kotlin.math.min
 
-// MARK: - 실시간 분석을 위한 데이터 구조
+//----------------------------------------------------------
+// 데이터 구조
+//----------------------------------------------------------
 
 data class FrameAnalysis(
-    val faceRect: android.graphics.RectF?,                  // 얼굴 위치 (정규화된 좌표)
-    val bodyRect: android.graphics.RectF?,                  // 전신 추정 영역
-    val brightness: Float,                                   // 평균 밝기
-    val tiltAngle: Float,                                    // 기울기 각도
-    val faceYaw: Float?,                                     // 얼굴 좌우 회전
-    val facePitch: Float?,                                   // 얼굴 상하 각도
-    val cameraAngle: PhotoCameraAngle,                       // 카메라 각도
-    val poseKeypoints: List<KeypointWithConfidence>?,        // 키포인트 (133개)
-    val compositionType: CompositionType?,                   // 구도 타입
-    val gaze: FramingGazeDirection?,                         // 시선 방향
-    val depth: Float?,                                       // 깊이 추정 (미터)
-    val aspectRatio: CameraAspectRatio,                      // 카메라 비율
-    val imagePadding: ImagePadding?                          // 여백 정보
+    val faceRect: RectF?,
+    val bodyRect: RectF?,
+    val brightness: Float,
+    val tiltAngle: Float,
+    val faceYaw: Float?,
+    val facePitch: Float?,
+    val cameraAngle: PhotoCameraAngle,
+    val poseKeypoints: List<KeypointWithConfidence>?,
+    val compositionType: CompositionType?,
+    val gaze: FramingGazeDirection?,
+    val depth: Float?,
+    val aspectRatio: CameraAspectRatio,
+    val imagePadding: ImagePadding?
 )
 
-// 이미지 여백 정보
 data class ImagePadding(
-    val top: Float,         // 상단 여백 (0.0 ~ 1.0)
-    val bottom: Float,      // 하단 여백
-    val left: Float,        // 좌측 여백
-    val right: Float        // 우측 여백
+    val top: Float,
+    val bottom: Float,
+    val left: Float,
+    val right: Float
 ) {
     val total: Float get() = top + bottom + left + right
-
     val hasExcessivePadding: Boolean
         get() = top > 0.15f || bottom > 0.15f || left > 0.15f || right > 0.15f
 }
 
-// 구도 타입 (간단한 버전)
+data class SingleImageAnalysisResult(
+    val score: Float,
+    val poseScore: Float?,
+    val coverageScore: Float?,
+    val framingScore: Float?,
+    val shotType: ShotType?,
+    val message: String,
+    val categoryFeedbacks: Map<String, String>
+)
+
+//----------------------------------------------------------
+// 구도 타입
+//----------------------------------------------------------
+
 enum class CompositionType(val description: String) {
     CENTER("중앙"),
     RULE_OF_THIRDS_LEFT("삼분할법 좌"),
@@ -48,12 +62,16 @@ enum class CompositionType(val description: String) {
     GOLDEN_RATIO("황금비율")
 }
 
-// MARK: - 실시간 피드백 생성기
+//----------------------------------------------------------
+// RealtimeAnalyzer
+//----------------------------------------------------------
 
 class RealtimeAnalyzer(
     private val poseEstimationService: PoseEstimationService
 ) {
-    // StateFlow for reactive UI updates
+
+    // UI 업데이트용 StateFlow --------------------------------------------------
+
     private val _instantFeedback = MutableStateFlow<List<FeedbackItem>>(emptyList())
     val instantFeedback: StateFlow<List<FeedbackItem>> = _instantFeedback.asStateFlow()
 
@@ -69,119 +87,182 @@ class RealtimeAnalyzer(
     private val _completedFeedbacks = MutableStateFlow<List<CompletedFeedback>>(emptyList())
     val completedFeedbacks: StateFlow<List<CompletedFeedback>> = _completedFeedbacks.asStateFlow()
 
-    // 레퍼런스 분석 결과
+
+    // 내부 상태 ---------------------------------------------------------------
+
     var referenceAnalysis: FrameAnalysis? = null
     var referenceFramingResult: PhotographyFramingResult? = null
 
-    // 분석 제어
+    private val analysisScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var lastAnalysisTime = System.currentTimeMillis()
-    private val analysisInterval = 50L  // 50ms마다 분석
+    private val analysisInterval = 50L
     private var isAnalyzing = false
 
-    // 코루틴 스코프
-    private val analysisScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-
-    // 히스테리시스를 위한 상태 추적
-    private val feedbackHistory = mutableMapOf<String, Int>()
-    private val historyThreshold = 3  // 3번 연속 감지
     private var perfectFrameCount = 0
-    private val perfectThreshold = 5  // 5프레임 연속 완벽
+    private val perfectThreshold = 5
 
-    // 고정 피드백
-    private val stickyFeedbacks = mutableMapOf<String, FeedbackItem>()
+    private val feedbackHistory = mutableMapOf<String, Int>()
+    private val disappearedFeedbackHistory = mutableMapOf<String, Int>()
+
     private val stickyCategories = setOf(
-        "pose_left_arm",
-        "pose_right_arm",
-        "pose_left_leg",
-        "pose_right_leg",
+        "pose_left_arm", "pose_right_arm",
+        "pose_left_leg", "pose_right_leg",
         "pose_missing_parts"
     )
+    private val stickyFeedbacks = mutableMapOf<String, FeedbackItem>()
 
-    // 완료 감지
     private var previousFeedbackIds = emptySet<String>()
-    private val disappearedFeedbackHistory = mutableMapOf<String, Int>()
-    private val disappearedThreshold = 2  // 2번 연속 사라져야 완료
 
-    // 분석 컴포넌트들
+    // 분석 컴포넌트 -----------------------------------------------------------
+
     private val photographyFramingAnalyzer = PhotographyFramingAnalyzer()
     private val poseComparator = AdaptivePoseComparator()
     private val gapAnalyzer = GapAnalyzer()
     private val stagedFeedbackGenerator = StagedFeedbackGenerator()
 
+    var isCapturing: Boolean = false
+
+
     init {
-        println("🎬 RealtimeAnalyzer init()")
+        println("🎬 RealtimeAnalyzer initialized")
     }
 
-    // MARK: - 레퍼런스 이미지 분석
+    // -------------------------------------------------------------------------
+    // 1) 싱글 이미지 분석 (갤러리 I 버튼)
+    // -------------------------------------------------------------------------
+
+    suspend fun analyzeSingleImage(bitmap: Bitmap): SingleImageAnalysisResult =
+        withContext(Dispatchers.Default) {
+
+            val poseResult = poseEstimationService.detectPose(bitmap)
+
+            // ❗ 사람 없을 때 → 0점 처리
+            if (poseResult == null ||
+                poseResult.keypoints.count { it.confidence >= 0.3f } < 10
+            ) {
+                return@withContext SingleImageAnalysisResult(
+                    score = 0f,
+                    poseScore = 0f,
+                    coverageScore = 0f,
+                    framingScore = 0f,
+                    shotType = null,
+                    message = "사람을 찾을 수 없어요",
+                    categoryFeedbacks = mapOf(
+                        "pose" to "사람이 감지되지 않았어요",
+                        "composition" to "프레이밍을 분석할 수 없어요",
+                        "viewpoint" to "사람이 없어 시점을 분석할 수 없어요",
+                        "color" to "사진만으로는 분석이 어려워요",
+                        "mood" to "사진만으로는 분석이 어려워요"
+                    )
+                )
+            }
+
+            val keypoints = poseResult.keypoints
+
+            val framingResult = photographyFramingAnalyzer.analyze(
+                keypoints.map {
+                    KeypointWithConfidence(
+                        it.x / bitmap.width,
+                        it.y / bitmap.height,
+                        it.confidence
+                    )
+                }
+            )
+
+            if (framingResult == null) {
+                return@withContext SingleImageAnalysisResult(
+                    score = 3f,
+                    poseScore = 0f,
+                    coverageScore = 0f,
+                    framingScore = 0f,
+                    shotType = null,
+                    message = "프레이밍 분석 불가",
+                    categoryFeedbacks = emptyMap()
+                )
+            }
+
+            val poseScore = framingResult.shotTypeConfidence * 10f
+            val coverageScore = framingResult.bodyCoverage * 10f
+            val framingScore = framingResult.overallScore * 10f
+
+            val finalScore = (
+                    poseScore * 0.3f +
+                            coverageScore * 0.3f +
+                            framingScore * 0.4f
+                    ).coerceIn(0f, 10f)
+
+            val categoryFeedbacks = mutableMapOf<String, String>()
+
+            categoryFeedbacks["pose"] =
+                if (poseScore > 7f) "포즈가 자연스러워요" else "포즈가 부자연스러워요"
+
+            categoryFeedbacks["composition"] =
+                framingResult.generateFeedback() ?: "구도가 자연스러워요"
+
+            categoryFeedbacks["viewpoint"] =
+                "카메라 앵글: ${framingResult.cameraAngle.displayName}"
+
+            categoryFeedbacks["color"] = "노출은 전체적으로 양호해요"
+            categoryFeedbacks["mood"] = "사진 분위기가 좋아요"
+
+            return@withContext SingleImageAnalysisResult(
+                score = finalScore,
+                poseScore = poseScore,
+                coverageScore = coverageScore,
+                framingScore = framingScore,
+                shotType = framingResult.shotType,
+                message = "사진 분석 완료",
+                categoryFeedbacks = categoryFeedbacks
+            )
+        }
+// -------------------------------------------------------------------------
+// 2) 레퍼런스 이미지 분석
+// -------------------------------------------------------------------------
 
     suspend fun analyzeReference(bitmap: Bitmap) = withContext(Dispatchers.Default) {
+
         println("========================================")
         println("🎯 레퍼런스 이미지 분석 시작")
         println("========================================")
 
-        println("🎯 레퍼런스 이미지 크기: ${bitmap.width} x ${bitmap.height}")
-
-        // RTMPose로 포즈 검출
         val poseResult = poseEstimationService.detectPose(bitmap)
 
         if (poseResult == null) {
-            println("❌ 포즈 검출 실패")
+            println("❌ 포즈 검출 실패 (사람 없음)")
+            referenceAnalysis = null
+            referenceFramingResult = null
             return@withContext
         }
 
-        println("🎯 분석 완료:")
-        println("   - 포즈: ✅ 검출됨 (${poseResult.keypoints.size}개 키포인트)")
-
-        val visibleCount = poseResult.keypoints.count { it.confidence >= 0.5f }
-        println("   - 포즈 신뢰도 ≥ 0.5: $visibleCount/${poseResult.keypoints.size}개")
-
-        // 얼굴/신체 영역 추정 (간단한 버전)
         val faceRect = estimateFaceRect(poseResult.keypoints)
         val bodyRect = estimateBodyRect(poseResult.keypoints)
 
-        // 밝기 계산 (간단한 버전)
         val brightness = calculateBrightness(bitmap)
-
-        // 기울기 계산
         val tiltAngle = calculateShoulderTilt(poseResult.keypoints)
 
-        // 얼굴 각도 추정 (간단한 버전)
         val (faceYaw, facePitch) = estimateFaceAngles(poseResult.keypoints)
-
-        // 카메라 앵글 추정
         val cameraAngle = estimateCameraAngle(poseResult.keypoints)
-
-        // 구도 타입 (간단한 버전)
         val compositionType = faceRect?.let { classifyComposition(it) }
-
-        // 시선 방향
         val gaze = estimateGazeDirection(poseResult.keypoints)
-
-        // 깊이 추정 (간단한 버전)
         val depth = faceRect?.let { estimateDepth(it, bitmap.width) }
 
-        // 비율 감지
         val aspectRatio = CameraAspectRatio.detect(bitmap.width.toFloat(), bitmap.height.toFloat())
+        val padding = calculatePaddingFromKeypoints(
+            poseResult.keypoints,
+            bitmap.width,
+            bitmap.height
+        )
 
-        // 여백 계산
-        val padding = calculatePaddingFromKeypoints(poseResult.keypoints, bitmap.width, bitmap.height)
-
-        // 사진학 기반 프레이밍 분석 (RTMPose 133개 키포인트)
+        // 133 Keypoints일 때 프레이밍 분석
         if (poseResult.keypoints.size >= 133) {
-            val normalizedKeypoints = poseResult.keypoints.map { kp ->
+            val normalized = poseResult.keypoints.map {
                 KeypointWithConfidence(
-                    x = kp.x / bitmap.width,
-                    y = kp.y / bitmap.height,
-                    confidence = kp.confidence
+                    x = it.x / bitmap.width,
+                    y = it.y / bitmap.height,
+                    confidence = it.confidence
                 )
             }
-            referenceFramingResult = photographyFramingAnalyzer.analyze(normalizedKeypoints)
-
-            referenceFramingResult?.let { refFraming ->
-                println("   - 📸 레퍼런스 샷 타입: ${refFraming.shotType.displayName}")
-                println("   - 📸 레퍼런스 헤드룸: ${String.format("%.1f%%", refFraming.headroom * 100)}")
-                println("   - 📸 레퍼런스 카메라 앵글: ${refFraming.cameraAngle.displayName}")
-            }
+            referenceFramingResult = photographyFramingAnalyzer.analyze(normalized)
         }
 
         referenceAnalysis = FrameAnalysis(
@@ -199,118 +280,76 @@ class RealtimeAnalyzer(
             aspectRatio = aspectRatio,
             imagePadding = padding
         )
-
-        println("========================================")
-        println("📸 레퍼런스 분석 최종 결과:")
-        println("   - 비율: ${aspectRatio.displayName}")
-        println("   - 얼굴: ${if (faceRect != null) "✅ 감지됨" else "❌ 없음"}")
-        println("   - 포즈 키포인트: ${poseResult.keypoints.size}개 (신뢰도 ≥ 0.5: ${visibleCount}개)")
-        println("   - 밝기: $brightness")
-        println("   - 기울기: ${tiltAngle}도")
-        println("========================================")
     }
 
-    // MARK: - 실시간 프레임 분석
 
-    // MARK: - 실시간 프레임 분석
+// -------------------------------------------------------------------------
+// 3) 실시간 분석 (카메라 프리뷰)
+// -------------------------------------------------------------------------
+
     fun analyzeFrame(
         bitmap: Bitmap,
         isFrontCamera: Boolean = false,
         currentAspectRatio: CameraAspectRatio = CameraAspectRatio.RATIO_4_3
     ) {
-        // 너무 자주 분석하지 않도록 제한
         val now = System.currentTimeMillis()
-        if (now - lastAnalysisTime < analysisInterval) return
 
-        // 이미 분석 중이면 스킵
+        if (now - lastAnalysisTime < analysisInterval) return
         if (isAnalyzing) return
 
-        // 레퍼런스가 없으면 분석하지 않음
         val reference = referenceAnalysis ?: run {
             analysisScope.launch(Dispatchers.Main) {
                 _instantFeedback.value = listOf(
                     FeedbackItem(
                         priority = 1,
-                        icon = "👤",
-                        message = "얼굴을 화면에 보여주세요",
-                        category = "no_face",
+                        icon = "📸",
+                        message = "레퍼런스를 먼저 선택해주세요",
+                        category = "no_reference",
                         currentValue = null,
                         targetValue = null,
                         tolerance = null,
                         unit = null
                     )
                 )
-                _perfectScore.value = 0.0
                 _isPerfect.value = false
+                _perfectScore.value = 0.0
             }
             return
         }
 
-        // ⭐ Bitmap 유효성 체크
-        if (bitmap.isRecycled) {
-            println("⚠️ analyzeFrame: bitmap이 이미 recycle됨")
-            return
-        }
+        if (bitmap.isRecycled) return
 
-        // ⭐ Bitmap 복사 (비동기 실행 중 recycle 방지)
-        val bitmapCopy: Bitmap
-        try {
-            bitmapCopy = bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
-                ?: run {
-                    println("⚠️ analyzeFrame: bitmap 복사 실패")
-                    return
-                }
+        val safeCopy = try {
+            bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
         } catch (e: Exception) {
-            println("⚠️ analyzeFrame: bitmap 복사 중 오류: ${e.message}")
             return
-        }
+        } ?: return
 
         lastAnalysisTime = now
         isAnalyzing = true
 
-        // 백그라운드에서 분석 실행
         analysisScope.launch {
-            try {
-                val analysisStart = System.currentTimeMillis()
+            val poseResult = poseEstimationService.detectPose(safeCopy)
 
-                // RTMPose로 분석 (복사본 사용)
-                val poseStart = System.currentTimeMillis()
-                val poseResult = poseEstimationService.detectPose(bitmapCopy)
-                val poseEnd = System.currentTimeMillis()
-
-                val analysisEnd = System.currentTimeMillis()
-
-                // 프로파일링 로그
-                val poseTime = poseEnd - poseStart
-                val totalTime = analysisEnd - analysisStart
-                println("📊 [RealtimeAnalyzer] RTMPose: ${poseTime}ms, 총분석: ${totalTime}ms")
-
-                // 메인 스레드에서 결과 처리
-                withContext(Dispatchers.Main) {
-                    isAnalyzing = false
-                    processAnalysisResult(
-                        poseResult = poseResult,
-                        bitmap = bitmapCopy,
-                        reference = reference,
-                        isFrontCamera = isFrontCamera,
-                        currentAspectRatio = currentAspectRatio
-                    )
-                }
-            } catch (e: Exception) {
-                println("⚠️ analyzeFrame 코루틴 오류: ${e.message}")
-                withContext(Dispatchers.Main) {
-                    isAnalyzing = false
-                }
-            } finally {
-                // ⭐ 분석 완료 후 복사본 recycle
-                if (!bitmapCopy.isRecycled) {
-                    bitmapCopy.recycle()
-                }
+            withContext(Dispatchers.Main) {
+                isAnalyzing = false
+                processAnalysisResult(
+                    poseResult = poseResult,
+                    bitmap = safeCopy,
+                    reference = reference,
+                    isFrontCamera = isFrontCamera,
+                    currentAspectRatio = currentAspectRatio
+                )
             }
+
+            safeCopy.recycle()
         }
     }
 
-    // MARK: - 분석 결과 처리
+
+// -------------------------------------------------------------------------
+// 실시간 분석 결과 처리
+// -------------------------------------------------------------------------
 
     private fun processAnalysisResult(
         poseResult: RTMPoseResult?,
@@ -319,14 +358,17 @@ class RealtimeAnalyzer(
         isFrontCamera: Boolean,
         currentAspectRatio: CameraAspectRatio
     ) {
-        // 포즈가 감지되지 않으면 완성도 0
-        if (poseResult == null) {
+
+        // ❗ 사람이 감지되지 않은 경우
+        if (poseResult == null ||
+            poseResult.keypoints.count { it.confidence >= 0.3f } < 10
+        ) {
             _instantFeedback.value = listOf(
                 FeedbackItem(
                     priority = 1,
                     icon = "👤",
-                    message = "얼굴을 화면에 보여주세요",
-                    category = "no_face",
+                    message = "사람이 화면에 보이지 않아요",
+                    category = "no_person",
                     currentValue = null,
                     targetValue = null,
                     tolerance = null,
@@ -338,381 +380,323 @@ class RealtimeAnalyzer(
             return
         }
 
-        // 밝기 및 기울기
+        // 사람 감지됨 → 계속 분석
+        val keypoints = poseResult.keypoints
         val brightness = calculateBrightness(bitmap)
-        val tilt = calculateShoulderTilt(poseResult.keypoints)
+        val tilt = calculateShoulderTilt(keypoints)
 
-        // 얼굴/신체 영역
-        val faceRect = estimateFaceRect(poseResult.keypoints)
-        val bodyRect = estimateBodyRect(poseResult.keypoints)
-
-        // 카메라 앵글
-        val cameraAngle = estimateCameraAngle(poseResult.keypoints)
-
-        // 구도
+        val faceRect = estimateFaceRect(keypoints)
+        val bodyRect = estimateBodyRect(keypoints)
+        val cameraAngle = estimateCameraAngle(keypoints)
         val compositionType = faceRect?.let { classifyComposition(it) }
-
-        // 시선
-        val gaze = estimateGazeDirection(poseResult.keypoints)
-
-        // 깊이
+        val gaze = estimateGazeDirection(keypoints)
         val depth = faceRect?.let { estimateDepth(it, bitmap.width) }
 
-        // 여백 계산
-        val currentPadding = calculatePaddingFromKeypoints(poseResult.keypoints, bitmap.width, bitmap.height)
+        val padding =
+            calculatePaddingFromKeypoints(keypoints, bitmap.width, bitmap.height)
 
-        // 현재 프레임 분석
-        val (faceYaw, facePitch) = estimateFaceAngles(poseResult.keypoints)
+        val (faceYaw, facePitch) = estimateFaceAngles(keypoints)
 
         val currentFrame = FrameAnalysis(
-            faceRect = faceRect,
-            bodyRect = bodyRect,
-            brightness = brightness,
-            tiltAngle = tilt,
-            faceYaw = faceYaw,
-            facePitch = facePitch,
-            cameraAngle = cameraAngle,
-            poseKeypoints = poseResult.keypoints,
-            compositionType = compositionType,
-            gaze = gaze,
-            depth = depth,
-            aspectRatio = currentAspectRatio,
-            imagePadding = currentPadding
+            faceRect,
+            bodyRect,
+            brightness,
+            tilt,
+            faceYaw,
+            facePitch,
+            cameraAngle,
+            keypoints,
+            compositionType,
+            gaze,
+            depth,
+            currentAspectRatio,
+            padding
         )
 
-        // 사진학 기반 프레이밍 분석
-        var photographyFramingResult: PhotographyFramingResult? = null
-        if (poseResult.keypoints.size >= 133) {
-            val normalizedKeypoints = poseResult.keypoints.map { kp ->
+        var framingResult: PhotographyFramingResult? = null
+        if (keypoints.size >= 133) {
+            val normalized = keypoints.map {
                 KeypointWithConfidence(
-                    x = kp.x / bitmap.width,
-                    y = kp.y / bitmap.height,
-                    confidence = kp.confidence
+                    it.x / bitmap.width,
+                    it.y / bitmap.height,
+                    it.confidence
                 )
             }
-            photographyFramingResult = photographyFramingAnalyzer.analyze(normalizedKeypoints)
+            framingResult = photographyFramingAnalyzer.analyze(normalized)
         }
 
-        // Phase 3: 단계별 피드백 시스템
-
-        // 1. 포즈 비교
         var poseComparison: PoseComparisonResult? = null
         var croppedGroups: List<KeypointGroup> = emptyList()
 
         val refKeypoints = reference.poseKeypoints
-        val curKeypoints = poseResult.keypoints
+        if (refKeypoints != null && keypoints.size >= 133 && refKeypoints.size >= 133) {
 
-        if (refKeypoints != null && refKeypoints.size >= 133 && curKeypoints.size >= 133) {
-            poseComparison = poseComparator.comparePoses(refKeypoints, curKeypoints)
+            poseComparison = poseComparator.comparePoses(refKeypoints, keypoints)
 
-            // 잘린 그룹 감지
-            referenceFramingResult?.let { refFraming ->
+            referenceFramingResult?.let { ref ->
                 croppedGroups = poseComparator.detectCroppedGroups(
                     refKeypoints,
-                    curKeypoints,
-                    refFraming.shotType
+                    keypoints,
+                    ref.shotType
                 )
             }
         }
 
-        // 2. 현재 피드백 단계 결정
-        val feedbackStage = stagedFeedbackGenerator.determineFeedbackStage(
+        val stage = stagedFeedbackGenerator.determineFeedbackStage(
             referenceFraming = referenceFramingResult,
-            currentFraming = photographyFramingResult,
+            currentFraming = framingResult,
             referenceAspectRatio = reference.aspectRatio,
             currentAspectRatio = currentAspectRatio,
             poseComparison = poseComparison
         )
 
-        // 3. 단계별 피드백 생성
         val feedbacks = stagedFeedbackGenerator.generateStagedFeedback(
-            stage = feedbackStage,
+            stage,
             referenceFraming = referenceFramingResult,
-            currentFraming = photographyFramingResult,
-            referenceAspectRatio = reference.aspectRatio,
-            currentAspectRatio = currentAspectRatio,
-            poseComparison = poseComparison,
-            croppedGroups = croppedGroups,
-            isFrontCamera = isFrontCamera
+            currentFraming = framingResult,
+            reference.aspectRatio,
+            currentAspectRatio,
+            poseComparison,
+            croppedGroups,
+            isFrontCamera
         )
 
-        // 히스테리시스 적용
         val stableFeedback = mutableListOf<FeedbackItem>()
         val currentCategories = mutableSetOf<String>()
 
         for (fb in feedbacks) {
             if (currentCategories.contains(fb.category)) continue
-
             currentCategories.add(fb.category)
+
             feedbackHistory[fb.category] = (feedbackHistory[fb.category] ?: 0) + 1
 
-            if (feedbackHistory[fb.category]!! >= historyThreshold) {
+            if (feedbackHistory[fb.category]!! >= 3) {
                 stableFeedback.add(fb)
-
                 if (stickyCategories.contains(fb.category)) {
                     stickyFeedbacks[fb.category] = fb
                 }
             }
         }
 
-        // 고정 피드백 추가
-        for ((category, stickyFb) in stickyFeedbacks) {
-            if (!stableFeedback.any { it.category == category }) {
-                stableFeedback.add(stickyFb)
+        // Sticky 유지
+        stickyFeedbacks.forEach { (cat, item) ->
+            if (!stableFeedback.any { it.category == cat }) {
+                stableFeedback.add(item)
             }
         }
 
-        // 사라진 카테고리 히스토리 초기화
-        for ((category, _) in feedbackHistory.toMap()) {
-            if (!currentCategories.contains(category)) {
-                feedbackHistory[category] = 0
-
-                if (stickyCategories.contains(category)) {
-                    disappearedFeedbackHistory[category] = (disappearedFeedbackHistory[category] ?: 0) + 1
-                    if (disappearedFeedbackHistory[category]!! >= disappearedThreshold) {
-                        stickyFeedbacks.remove(category)
-                        disappearedFeedbackHistory[category] = 0
-                    }
-                }
-            } else {
-                disappearedFeedbackHistory[category] = 0
+        // 사라진 피드백 → completed 처리
+        val disappeared = previousFeedbackIds - stableFeedback.map { it.id }.toSet()
+        for (id in disappeared) {
+            disappearedFeedbackHistory[id] = (disappearedFeedbackHistory[id] ?: 0) + 1
+            if (disappearedFeedbackHistory[id]!! >= 2) {
+                val old =
+                    _instantFeedback.value.find { it.id == id } ?: continue
+                _completedFeedbacks.value =
+                    _completedFeedbacks.value + CompletedFeedback(old, System.currentTimeMillis())
+                disappearedFeedbackHistory[id] = 0
             }
         }
 
-        // 완벽한 상태 감지
-        val isCurrentlyPerfect = stableFeedback.isEmpty() && feedbackStage == FeedbackStage.COMPLETE
-        val score = if (isCurrentlyPerfect) 1.0 else (1.0 - stableFeedback.size * 0.1)
+        previousFeedbackIds = stableFeedback.map { it.id }.toSet()
 
-        if (isCurrentlyPerfect) {
-            perfectFrameCount++
-        } else {
-            perfectFrameCount = 0
-        }
+        val isPerfectNow =
+            stableFeedback.isEmpty() && stage == FeedbackStage.COMPLETE
 
-        // 완료된 피드백 감지
-        val currentFeedbackIds = stableFeedback.map { it.id }.toSet()
-        val disappeared = previousFeedbackIds - currentFeedbackIds
+        if (isPerfectNow) perfectFrameCount++
+        else perfectFrameCount = 0
 
-        for (disappearedId in disappeared) {
-            disappearedFeedbackHistory[disappearedId] = (disappearedFeedbackHistory[disappearedId] ?: 0) + 1
-
-            if (disappearedFeedbackHistory[disappearedId]!! >= disappearedThreshold) {
-                _instantFeedback.value.find { it.id == disappearedId }?.let { completedItem ->
-                    val completed = CompletedFeedback(completedItem, System.currentTimeMillis())
-                    _completedFeedbacks.value = _completedFeedbacks.value + completed
-                }
-                disappearedFeedbackHistory[disappearedId] = 0
-            }
-        }
-
-        for ((feedbackId, _) in disappearedFeedbackHistory.toMap()) {
-            if (currentFeedbackIds.contains(feedbackId)) {
-                disappearedFeedbackHistory[feedbackId] = 0
-            }
-        }
-
-        // 2초 지난 완료 피드백 제거
-        val now = System.currentTimeMillis()
-        _completedFeedbacks.value = _completedFeedbacks.value.filter {
-            it.shouldDisplay
-        }
-
-        previousFeedbackIds = currentFeedbackIds
-
-        // 카테고리별 상태 계산
-        val categoryStatuses = calculateCategoryStatuses(stableFeedback)
-
-        // StateFlow 업데이트
-        _instantFeedback.value = stableFeedback
-        _perfectScore.value = score
         _isPerfect.value = perfectFrameCount >= perfectThreshold
-        _categoryStatuses.value = categoryStatuses
+        _perfectScore.value =
+            if (isPerfectNow) 1.0 else 1.0 - stableFeedback.size * 0.1
 
+        // 🚫 촬영 중이면 UI 업데이트 금지
+        if (isCapturing) return
 
-        // ⭐ 디버깅 로그 추가
-        println("📢 실시간 피드백 업데이트: ${stableFeedback.size}개")
-        if (stableFeedback.isNotEmpty()) {
-            stableFeedback.forEach { fb ->
-                println("   - [${fb.category}] ${fb.message}")
-            }
-        } else {
-            println("   - ✅ 완벽한 상태!")
-        }
+        _instantFeedback.value = stableFeedback
+        _categoryStatuses.value = calculateCategoryStatuses(stableFeedback)
     }
 
-    // MARK: - Category Status Calculation
 
-    private fun calculateCategoryStatuses(feedbacks: List<FeedbackItem>): List<CategoryStatus> {
-        val statusMap = mutableMapOf<FeedbackCategory, CategoryStatus>()
+// -------------------------------------------------------------------------
+// 카테고리 상태 계산
+// -------------------------------------------------------------------------
 
-        // 모든 카테고리 초기화
-        for (category in FeedbackCategory.values()) {
-            statusMap[category] = CategoryStatus(
-                category = category,
-                isSatisfied = true,
-                activeFeedbacks = emptyList()
+    private fun calculateCategoryStatuses(
+        feedbacks: List<FeedbackItem>
+    ): List<CategoryStatus> {
+
+        val map = mutableMapOf<FeedbackCategory, CategoryStatus>()
+
+        FeedbackCategory.values().forEach { cat ->
+            map[cat] = CategoryStatus(cat, true, emptyList())
+        }
+
+        for (fb in feedbacks) {
+            val cat = FeedbackCategory.fromCategoryString(fb.category) ?: continue
+            val updated =
+                (map[cat]?.activeFeedbacks ?: emptyList()) + fb
+
+            map[cat] = CategoryStatus(
+                cat,
+                isSatisfied = false,
+                activeFeedbacks = updated.sortedBy { it.priority }
             )
         }
 
-        // 피드백이 있는 카테고리는 불만족
-        for (feedback in feedbacks) {
-            val category = FeedbackCategory.fromCategoryString(feedback.category)
-            if (category != null) {
-                val activeFeedbacks = (statusMap[category]?.activeFeedbacks ?: emptyList()) + feedback
-                statusMap[category] = CategoryStatus(
-                    category = category,
-                    isSatisfied = false,
-                    activeFeedbacks = activeFeedbacks.sortedBy { it.priority }
-                )
-            }
-        }
-
-        return statusMap.values.sortedBy { it.priority }
+        return map.values.sortedBy { it.priority }
     }
 
-    // MARK: - Helper Functions
+
+// -------------------------------------------------------------------------
+// Helper functions
+// -------------------------------------------------------------------------
 
     private fun calculatePaddingFromKeypoints(
         keypoints: List<KeypointWithConfidence>,
-        imageWidth: Int,
-        imageHeight: Int
+        w: Int,
+        h: Int
     ): ImagePadding? {
-        val structuralIndices = PhotographyFramingAnalyzer.StructuralKeypoints.all
 
-        val validPoints = structuralIndices.mapNotNull { idx ->
-            if (idx < keypoints.size && keypoints[idx].confidence > 0.3f) {
-                PointF(
-                    keypoints[idx].x / imageWidth,
-                    keypoints[idx].y / imageHeight
-                )
-            } else null
+        val structural = PhotographyFramingAnalyzer.StructuralKeypoints.all
+
+        val pts = structural.mapNotNull { idx ->
+            if (idx < keypoints.size && keypoints[idx].confidence > 0.3f)
+                PointF(keypoints[idx].x / w, keypoints[idx].y / h)
+            else null
         }
 
-        if (validPoints.size < 3) return null
+        if (pts.size < 3) return null
 
-        val minX = validPoints.minOf { it.x }
-        val maxX = validPoints.maxOf { it.x }
-        val minY = validPoints.minOf { it.y }
-        val maxY = validPoints.maxOf { it.y }
+        val minX = pts.minOf { it.x }
+        val maxX = pts.maxOf { it.x }
+        val minY = pts.minOf { it.y }
+        val maxY = pts.maxOf { it.y }
 
         return ImagePadding(
-            top = 1.0f - maxY,
+            top = 1f - maxY,
             bottom = minY,
             left = minX,
-            right = 1.0f - maxX
+            right = 1f - maxX
         )
     }
 
-    private fun estimateFaceRect(keypoints: List<KeypointWithConfidence>): android.graphics.RectF? {
-        // 얼굴 키포인트 (0-4: 코, 눈, 귀)
-        val faceIndices = listOf(0, 1, 2, 3, 4)
-        val facePoints = faceIndices.mapNotNull { idx ->
-            if (idx < keypoints.size && keypoints[idx].confidence > 0.3f) {
-                PointF(keypoints[idx].x, keypoints[idx].y)
-            } else null
+    private fun estimateFaceRect(keypoints: List<KeypointWithConfidence>): RectF? {
+        val indices = listOf(0, 1, 2, 3, 4)
+
+        val pts = indices.mapNotNull { i ->
+            if (i < keypoints.size && keypoints[i].confidence > 0.3f)
+                PointF(keypoints[i].x, keypoints[i].y)
+            else null
         }
 
-        if (facePoints.size < 3) return null
+        if (pts.size < 3) return null
 
-        val minX = facePoints.minOf { it.x }
-        val maxX = facePoints.maxOf { it.x }
-        val minY = facePoints.minOf { it.y }
-        val maxY = facePoints.maxOf { it.y }
-
-        return android.graphics.RectF(minX, minY, maxX, maxY)
+        return RectF(
+            pts.minOf { it.x },
+            pts.minOf { it.y },
+            pts.maxOf { it.x },
+            pts.maxOf { it.y }
+        )
     }
 
-    private fun estimateBodyRect(keypoints: List<KeypointWithConfidence>): android.graphics.RectF? {
-        val bodyIndices = PhotographyFramingAnalyzer.StructuralKeypoints.all
-        val bodyPoints = bodyIndices.mapNotNull { idx ->
-            if (idx < keypoints.size && keypoints[idx].confidence > 0.3f) {
+    private fun estimateBodyRect(keypoints: List<KeypointWithConfidence>): RectF? {
+        val structural = PhotographyFramingAnalyzer.StructuralKeypoints.all
+
+        val pts = structural.mapNotNull { idx ->
+            if (idx < keypoints.size && keypoints[idx].confidence > 0.3f)
                 PointF(keypoints[idx].x, keypoints[idx].y)
-            } else null
+            else null
         }
 
-        if (bodyPoints.size < 3) return null
+        if (pts.size < 3) return null
 
-        val minX = bodyPoints.minOf { it.x }
-        val maxX = bodyPoints.maxOf { it.x }
-        val minY = bodyPoints.minOf { it.y }
-        val maxY = bodyPoints.maxOf { it.y }
-
-        return android.graphics.RectF(minX, minY, maxX, maxY)
+        return RectF(
+            pts.minOf { it.x },
+            pts.minOf { it.y },
+            pts.maxOf { it.x },
+            pts.maxOf { it.y }
+        )
     }
 
     private fun calculateBrightness(bitmap: Bitmap): Float {
-        // 간단한 밝기 계산 (평균 픽셀 값)
-        var totalBrightness = 0L
-        var pixelCount = 0
-        val step = 10  // 샘플링
+        var total = 0L
+        var count = 0
+        val step = 10
 
         for (y in 0 until bitmap.height step step) {
             for (x in 0 until bitmap.width step step) {
-                val pixel = bitmap.getPixel(x, y)
-                val r = (pixel shr 16) and 0xFF
-                val g = (pixel shr 8) and 0xFF
-                val b = pixel and 0xFF
-                totalBrightness += (r + g + b) / 3
-                pixelCount++
+                val c = bitmap.getPixel(x, y)
+                val r = (c shr 16) and 0xFF
+                val g = (c shr 8) and 0xFF
+                val b = c and 0xFF
+
+                total += (r + g + b) / 3
+                count++
             }
         }
 
-        return if (pixelCount > 0) (totalBrightness.toFloat() / pixelCount / 255f) else 0.5f
+        return if (count > 0) total.toFloat() / count / 255f else 0.5f
     }
 
-    private fun calculateShoulderTilt(keypoints: List<KeypointWithConfidence>): Float {
-        val leftShoulder = keypoints.getOrNull(KeypointIndex.LEFT_SHOULDER)
-        val rightShoulder = keypoints.getOrNull(KeypointIndex.RIGHT_SHOULDER)
+    private fun calculateShoulderTilt(kp: List<KeypointWithConfidence>): Float {
 
-        if (leftShoulder == null || rightShoulder == null ||
-            leftShoulder.confidence <= 0.3f || rightShoulder.confidence <= 0.3f
-        ) {
-            return 0f
-        }
+        val L = kp.getOrNull(KeypointIndex.LEFT_SHOULDER)
+        val R = kp.getOrNull(KeypointIndex.RIGHT_SHOULDER)
 
-        val dx = rightShoulder.x - leftShoulder.x
-        val dy = rightShoulder.y - leftShoulder.y
+        if (L == null || R == null ||
+            L.confidence <= 0.3f || R.confidence <= 0.3f
+        ) return 0f
 
-        val angleRadians = atan2(dy, dx)
-        return angleRadians * 180f / PI.toFloat()
+        val dx = R.x - L.x
+        val dy = R.y - L.y
+
+        return (atan2(dy, dx) * 180f / PI).toFloat()
     }
 
-    private fun estimateFaceAngles(keypoints: List<KeypointWithConfidence>): Pair<Float?, Float?> {
-        // 간단한 추정 (실제로는 더 복잡한 계산 필요)
+    private fun estimateFaceAngles(
+        k: List<KeypointWithConfidence>
+    ): Pair<Float?, Float?> {
         return Pair(0f, 0f)
     }
 
-    private fun estimateCameraAngle(keypoints: List<KeypointWithConfidence>): PhotoCameraAngle {
-        // 간단한 추정
+    private fun estimateCameraAngle(
+        keypoints: List<KeypointWithConfidence>
+    ): PhotoCameraAngle {
         return PhotoCameraAngle.EYE_LEVEL
     }
 
-    private fun classifyComposition(faceRect: android.graphics.RectF): CompositionType {
-        val centerX = faceRect.centerX()
+    private fun classifyComposition(faceRect: RectF): CompositionType {
+        val cx = faceRect.centerX()
         return when {
-            centerX < 0.33f -> CompositionType.RULE_OF_THIRDS_LEFT
-            centerX > 0.67f -> CompositionType.RULE_OF_THIRDS_RIGHT
+            cx < 0.33f -> CompositionType.RULE_OF_THIRDS_LEFT
+            cx > 0.67f -> CompositionType.RULE_OF_THIRDS_RIGHT
             else -> CompositionType.CENTER
         }
     }
 
-    private fun estimateGazeDirection(keypoints: List<KeypointWithConfidence>): FramingGazeDirection {
-        // 간단한 추정
+    private fun estimateGazeDirection(
+        kp: List<KeypointWithConfidence>
+    ): FramingGazeDirection {
         return FramingGazeDirection.CENTER
     }
 
-    private fun estimateDepth(faceRect: android.graphics.RectF, imageWidth: Int): Float {
-        // 간단한 추정 (얼굴 크기 기반)
-        val faceWidth = faceRect.width() * imageWidth
-        return 1.0f / (faceWidth / 200f)  // 대략적인 거리
+    private fun estimateDepth(f: RectF, w: Int): Float {
+        val fw = f.width() * w
+        return 1.0f / (fw / 200f)
+    }
+
+
+// -------------------------------------------------------------------------
+// cleanup
+// -------------------------------------------------------------------------
+
+    fun clearReference() {
+        referenceAnalysis = null
     }
 
     fun cleanup() {
         analysisScope.cancel()
     }
 
-    fun clearReference() {
-        referenceAnalysis = null
-        println("🗑️ 레퍼런스 분석 결과 초기화")
-    }
 }

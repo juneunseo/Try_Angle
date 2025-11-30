@@ -93,7 +93,7 @@
         android:layout_marginBottom="180dp"
         android:elevation="30dp" />
 
-    <!-- ★ 옵션바 - 독립적으로 떠있음 -->
+    <!-- ★ 옵션바 - 균일 정렬 버전 -->
     <LinearLayout
         android:id="@+id/optionBar"
         android:layout_width="wrap_content"
@@ -102,61 +102,96 @@
         android:layout_marginBottom="180dp"
         android:orientation="horizontal"
         android:gravity="center"
-        android:paddingHorizontal="24dp"
+        android:paddingHorizontal="20dp"
+        android:minWidth="370dp"
+        android:maxWidth="490dp"
         android:background="@drawable/pill_black_translucent_bg"
         android:elevation="20dp"
         android:visibility="gone">
 
-        <TextView
-            android:id="@+id/btnExp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="EXP"
-            android:textColor="#FFFFFF"
-            android:textSize="13sp" />
 
-        <ImageButton
-            android:id="@+id/btnTimer"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="@android:color/transparent"
-            app:srcCompat="@drawable/btn_timer"
-            android:layout_marginStart="24dp" />
-
-        <TextView
-            android:id="@+id/btnRatio"
-            android:layout_width="wrap_content"
+    <!-- EXP -->
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:text="16:9"
-            android:textColor="#FFFFFF"
-            android:textSize="13sp"
-            android:layout_marginStart="24dp"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="8dp"
-            android:gravity="center"
-            android:minWidth="48dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:background="?attr/selectableItemBackgroundBorderless" />
+            android:layout_weight="1"
+            android:gravity="center">
 
-        <ImageButton
-            android:id="@+id/btnFlash"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="@android:color/transparent"
-            android:src="@drawable/ic_flash_off"
-            app:tint="#FFFFFF"
-            android:layout_marginStart="24dp" />
+            <TextView
+                android:id="@+id/btnExp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="EXP"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+        </LinearLayout>
 
-        <ImageButton
-            android:id="@+id/btnCloseOption"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="@android:color/transparent"
-            app:srcCompat="@drawable/ic_close"
-            android:layout_marginStart="24dp" />
+        <!-- Timer -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageButton
+                android:id="@+id/btnTimer"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@android:color/transparent"
+                app:srcCompat="@drawable/btn_timer" />
+        </LinearLayout>
+
+        <!-- Ratio -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/btnRatio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="16:9"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="8dp" />
+        </LinearLayout>
+
+        <!-- Flash -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageButton
+                android:id="@+id/btnFlash"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@android:color/transparent"
+                android:src="@drawable/ic_flash_off"
+                app:tint="#FFFFFF" />
+        </LinearLayout>
+
+        <!-- Close -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageButton
+                android:id="@+id/btnCloseOption"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@android:color/transparent"
+                app:srcCompat="@drawable/ic_close" />
+        </LinearLayout>
 
     </LinearLayout>
+
 
     <!-- ▼ UI 박스 (하단바 + 메뉴) -->
     <LinearLayout
@@ -195,15 +230,18 @@
                 android:layout_height="match_parent"
                 android:gravity="center_vertical|end"
                 android:orientation="horizontal"
-                android:layout_weight="1">
+                android:layout_weight="1.0">
 
                 <ImageButton
                     android:id="@+id/btnSwitch"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
+                    android:layout_marginEnd="23dp"
+                    android:layout_marginTop="2dp"
                     android:background="@android:color/transparent"
                     app:srcCompat="@drawable/ic_switch_camera" />
             </LinearLayout>
+
         </LinearLayout>
 
         <!-- ▼ 하단 메뉴 -->
@@ -406,7 +444,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="220dp"
+        android:layout_marginBottom="550dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
         android:paddingHorizontal="20dp"

@@ -24,6 +24,10 @@ import kotlinx.coroutines.flow.collectLatest
 // ✅ AI 시스템 import
 import com.example.camera2app.ai.*
 
+import android.os.Handler
+import android.os.Looper
+
+
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
@@ -63,6 +67,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var iconAngle: ImageView
     private lateinit var iconComposition: ImageView
     private lateinit var iconGaze: ImageView
+    private var isCapturing = false
+
 
     companion object {
         private const val REQUEST_REFERENCE_IMAGE = 2001
@@ -344,13 +350,26 @@ class MainActivity : AppCompatActivity() {
                     println("📸 촬영 사진 유효한 키포인트: $capturedValidKeypoints / ${capturedResult.keypoints.size}")
 
                     if (capturedValidKeypoints < 10) {
-                        println("❌ 촬영 사진: 유효한 키포인트 부족 → 사람이 제대로 인식되지 않음")
+                        println("❌ 촬영 사진: 유효한 키포인트 부족 → 사람 없음 → 0점 처리")
+
+                        val score = 0.0f
+                        val feedbackMsg = "사람이 인식되지 않아 0점으로 평가되었어요."
+
                         runOnUiThread {
                             hideLoadingOverlay()
-                            Toast.makeText(this, "사람이 제대로 인식되지 않았습니다.\n다시 촬영해주세요.", Toast.LENGTH_LONG).show()
+
+                            val intent = Intent(this, com.example.camera2app.gallery.FeedbackScoreActivity::class.java).apply {
+                                putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_CAPTURED_URI, uri.toString())
+                                putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_REFERENCE_URI, "reference_uri_placeholder")
+                                putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_SCORE, score)
+                                putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE, feedbackMsg)
+                            }
+                            startActivity(intent)
                         }
+
                         return@Thread
                     }
+
 
                     println("📸 레퍼런스 재분석 시작...")
                     val referenceResult = poseEstimationService?.detectPose(referenceBitmap!!)
@@ -412,6 +431,13 @@ class MainActivity : AppCompatActivity() {
             println("❌❌❌ processCapturedPhoto 최상위 크래시: ${e.message}")
             e.printStackTrace()
         }
+
+        // ⭐ 촬영 종료 – UI 업데이트는 500ms 뒤에 허용
+        Handler(Looper.getMainLooper()).postDelayed({
+            isCapturing = false
+        }, 500)
+
+
     }
 
     // ⭐ 로딩 오버레이 변수
@@ -749,6 +775,9 @@ class MainActivity : AppCompatActivity() {
 
     // ✅ 피드백 UI 업데이트
     private fun updateFeedbackUI(feedback: List<FeedbackItem>) {
+
+        if (isCapturing) return
+
         runOnUiThread {
             // 레퍼런스가 설정되지 않았으면 UI 숨김
             if (!isReferenceSet) {
@@ -873,15 +902,15 @@ class MainActivity : AppCompatActivity() {
     // ---------------------------
     private fun initButtons() {
         binding.btnShutter.setOnClickListener {
-            // ⭐ 촬영 전 실시간 분석 완전 중지
+            isCapturing = true   // ⭐ 촬영 시작
             realtimeAnalysisJob?.cancel()
             realtimeAnalysisJob = null
 
-            // 약간의 딜레이 후 촬영
             binding.btnShutter.postDelayed({
                 controller.takePictureWithTimer()
             }, 150)
         }
+
 
         // ⭐ 전면/후면 카메라 전환 버튼 추가
         binding.btnSwitch.setOnClickListener {

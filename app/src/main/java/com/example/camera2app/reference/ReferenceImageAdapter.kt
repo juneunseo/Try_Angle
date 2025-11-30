@@ -80,21 +80,25 @@ class ReferenceImageAdapter(
 
     // ========== URI 이미지 처리 (갤러리에서 추가한 사진) ==========
     private fun setupUriImage(holder: Holder, uri: String) {
-        // 하트 상태 표시
         val isLiked = LikeManager.isLiked(uri)
         updateHeartIcon(holder.heart, isLiked)
 
-        // 이미지 클릭 → PreviewActivity로 이동 (또는 ImageDetailActivity)
+        // ⭐ 기존 PreviewActivity로 보내던 코드 제거!
+        // Uri 이미지도 ImageDetailActivity와 동일한 경로로 이동하도록 변경
+
         holder.img.setOnClickListener {
             val context = holder.itemView.context
-            // ⭐ 갤러리 사진은 PreviewActivity로 이동
-            val intent = Intent(context, com.example.camera2app.gallery.PreviewActivity::class.java).apply {
-                putExtra(com.example.camera2app.gallery.PreviewActivity.EXTRA_IMAGE_URI, uri)
+            val intent = Intent(context, ImageDetailActivity::class.java).apply {
+                putExtra("image_uri", uri)   // ⭐ 반드시 새로 넣어줘야 함
             }
-            context.startActivity(intent)
+
+            if (context is ReferenceActivity) {
+                context.startActivityForResult(intent, ReferenceActivity.REQUEST_IMAGE_DETAIL)
+            } else {
+                context.startActivity(intent)
+            }
         }
 
-        // 하트 클릭 리스너
         holder.heart.setOnClickListener {
             val nowLiked = LikeManager.toggleLike(uri)
             updateHeartIcon(holder.heart, nowLiked)
@@ -102,6 +106,7 @@ class ReferenceImageAdapter(
             animateHeart(holder.heart)
         }
     }
+
 
     // ========== 공통 메서드 ==========
     private fun updateHeartIcon(heartView: ImageView, isLiked: Boolean) {

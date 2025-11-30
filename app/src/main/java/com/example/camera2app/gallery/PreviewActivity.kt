@@ -20,6 +20,17 @@ import com.example.camera2app.R
 import com.example.camera2app.databinding.ActivityPreviewBinding
 import com.example.camera2app.reference.LikeManager
 
+
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+
+import com.example.camera2app.ai.RealtimeAnalyzer
+import com.example.camera2app.ai.PoseEstimationService
+
+
+
 class PreviewActivity : ComponentActivity() {
 
     companion object {
@@ -36,7 +47,17 @@ class PreviewActivity : ComponentActivity() {
         get() = if (photoList.isNotEmpty() && currentPosition in photoList.indices)
             photoList[currentPosition] else null
 
+    private lateinit var realtimeAnalyzer: RealtimeAnalyzer
+    private lateinit var poseEstimationService: PoseEstimationService
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
+
+        poseEstimationService = PoseEstimationService(this)
+        poseEstimationService.initialize()
+
+        realtimeAnalyzer = RealtimeAnalyzer(poseEstimationService)
+
         super.onCreate(savedInstanceState)
         binding = ActivityPreviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -84,11 +105,27 @@ class PreviewActivity : ComponentActivity() {
 
         binding.btnInfo.setOnClickListener {
             currentUri?.let { uri ->
-                val intent = Intent(this, FeedbackActivity::class.java)
-                intent.putExtra(FeedbackActivity.EXTRA_IMAGE_URI, uri.toString())
-                startActivity(intent)
+                val bitmap = loadBitmap(uri) // 갤러리 사진 Bitmap 로드
+
+                lifecycleScope.launch {
+                    val result = realtimeAnalyzer.analyzeSingleImage(bitmap)
+
+                    val intent = Intent(this@PreviewActivity, FeedbackActivity::class.java)
+                    intent.putExtra(FeedbackActivity.EXTRA_IMAGE_URI, uri.toString())
+                    intent.putExtra(FeedbackActivity.EXTRA_SCORE, result.score)
+                    intent.putExtra(FeedbackActivity.EXTRA_FEEDBACK_MESSAGE, result.message)
+
+                    // category feedback 전달
+                    intent.putExtra("cat_pose", result.categoryFeedbacks["pose"])
+                    intent.putExtra("cat_comp", result.categoryFeedbacks["composition"])
+                    intent.putExtra("cat_view", result.categoryFeedbacks["viewpoint"])
+                    intent.putExtra("cat_mood", result.categoryFeedbacks["mood"])
+
+                    startActivity(intent)
+                }
             }
         }
+
 
         binding.btnShare.setOnClickListener { sharePhoto() }
         binding.btnFavorite.setOnClickListener { toggleFavorite() }
@@ -116,6 +153,16 @@ class PreviewActivity : ComponentActivity() {
 
         override fun getItemCount() = photos.size
     }
+
+    private fun loadBitmap(uri: Uri): Bitmap {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val source = ImageDecoder.createSource(contentResolver, uri)
+            ImageDecoder.decodeBitmap(source)
+        } else {
+            MediaStore.Images.Media.getBitmap(contentResolver, uri)
+        }
+    }
+
 
     private fun sharePhoto() {
         if (currentUri == null) {
