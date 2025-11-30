@@ -35,11 +35,16 @@ class ReferenceActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
 
         if (requestCode == REQUEST_IMAGE_DETAIL && resultCode == Activity.RESULT_OK) {
-            // ImageDetailActivity의 결과를 그대로 MainActivity로 전달
+
             setResult(Activity.RESULT_OK, data)
-            finish()  // ReferenceActivity도 종료해서 MainActivity로 돌아감
+
+            // 🔥 페이드/전환 애니메이션 제거 (중간 화면 깜빡임 방지)
+            overridePendingTransition(0, 0)
+
+            finish()
         }
     }
+
 
     private fun setupCategoryTabs() {
         val container = findViewById<LinearLayout>(R.id.categoryBar)

@@ -75,6 +75,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -83,19 +84,98 @@ class MainActivity : AppCompatActivity() {
 
         applyWindowInset()
         initCameraController()
-
-        // ✅ AI 시스템 초기화
         initAISystem()
-
         initPinchZoom()
         initButtons()
         initFeedbackUI()
         requestPermissionsIfNeeded()
 
         setAspectText(Camera2Controller.AspectMode.RATIO_9_16)
+
+
+        // -----------------------------------------
+        // 🔥 분석 모드 진입 (ImageDetailActivity → MainActivity)
+        // -----------------------------------------
+        // -----------------------------------------
+// 🔥 분석 모드 진입
+// -----------------------------------------
+        val isAnalysisMode = intent.getBooleanExtra("analysis_mode", false)
+        val refUriString = intent.getStringExtra("reference_uri")
+
+        if (isAnalysisMode && refUriString != null) {
+
+            println("🔥 MainActivity: 분석모드로 진입함")
+
+            showLoadingOverlay()
+
+            val refUri = Uri.parse(refUriString)
+
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    // -------------------------------
+                    // 1) 레퍼런스 비트맵 로드
+                    // -------------------------------
+                    val bitmap = uriToBitmap(refUri)
+
+                    if (bitmap == null) {
+                        withContext(Dispatchers.Main) {
+                            hideLoadingOverlay()
+                            Toast.makeText(
+                                this@MainActivity,
+                                "레퍼런스 이미지를 불러올 수 없습니다",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        return@launch
+                    }
+
+                    referenceBitmap = bitmap
+
+
+                    // -------------------------------
+                    // 2) AI 준비 완료까지 대기
+                    // -------------------------------
+                    while (!isAIInitialized) {
+                        delay(20)
+                    }
+
+
+                    // -------------------------------
+                    // 3) 레퍼런스 분석 (suspend 함수)
+                    // -------------------------------
+                    realtimeAnalyzer?.analyzeReference(bitmap)
+
+
+                    // -------------------------------
+                    // 4) 분석 준비 완료 → UI 업데이트
+                    // -------------------------------
+                    withContext(Dispatchers.Main) {
+                        isReferenceSet = true
+                        hideLoadingOverlay()
+                        showFeedbackUI()
+
+                        binding.textureView.postDelayed({
+                            startRealtimeAnalysis()
+                        }, 500)
+                    }
+
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        hideLoadingOverlay()
+                        Toast.makeText(
+                            this@MainActivity,
+                            "레퍼런스 분석 실패: ${e.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    e.printStackTrace()
+                }
+            }
+        }
+
     }
 
-    // ✅ 피드백 UI 초기화
+        // ✅ 피드백 UI 초기화
     private fun initFeedbackUI() {
         feedbackStatusContainer = findViewById(R.id.feedbackStatusContainer)
         feedbackMessageContainer = findViewById(R.id.feedbackMessageContainer)
@@ -346,7 +426,8 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     // ⭐ 유효한 키포인트 개수 체크 추가
-                    val capturedValidKeypoints = capturedResult.keypoints.count { it.confidence >= 0.5f }
+                    val capturedValidKeypoints =
+                        capturedResult.keypoints.count { it.confidence >= 0.5f }
                     println("📸 촬영 사진 유효한 키포인트: $capturedValidKeypoints / ${capturedResult.keypoints.size}")
 
                     if (capturedValidKeypoints < 10) {
@@ -358,11 +439,26 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             hideLoadingOverlay()
 
-                            val intent = Intent(this, com.example.camera2app.gallery.FeedbackScoreActivity::class.java).apply {
-                                putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_CAPTURED_URI, uri.toString())
-                                putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_REFERENCE_URI, "reference_uri_placeholder")
-                                putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_SCORE, score)
-                                putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE, feedbackMsg)
+                            val intent = Intent(
+                                this,
+                                com.example.camera2app.gallery.FeedbackScoreActivity::class.java
+                            ).apply {
+                                putExtra(
+                                    com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_CAPTURED_URI,
+                                    uri.toString()
+                                )
+                                putExtra(
+                                    com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_REFERENCE_URI,
+                                    "reference_uri_placeholder"
+                                )
+                                putExtra(
+                                    com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_SCORE,
+                                    score
+                                )
+                                putExtra(
+                                    com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
+                                    feedbackMsg
+                                )
                             }
                             startActivity(intent)
                         }
@@ -385,14 +481,16 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     // ⭐ 레퍼런스도 유효 키포인트 체크
-                    val refValidKeypoints = referenceResult.keypoints.count { it.confidence >= 0.5f }
+                    val refValidKeypoints =
+                        referenceResult.keypoints.count { it.confidence >= 0.5f }
                     println("📸 레퍼런스 유효한 키포인트: $refValidKeypoints / ${referenceResult.keypoints.size}")
 
                     if (refValidKeypoints < 10) {
                         println("❌ 레퍼런스: 유효한 키포인트 부족")
                         runOnUiThread {
                             hideLoadingOverlay()
-                            Toast.makeText(this, "레퍼런스 이미지의 포즈가 명확하지 않습니다.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this, "레퍼런스 이미지의 포즈가 명확하지 않습니다.", Toast.LENGTH_LONG)
+                                .show()
                         }
                         return@Thread
                     }
@@ -408,11 +506,26 @@ class MainActivity : AppCompatActivity() {
                         println("🚀 FeedbackScoreActivity 이동")
                         hideLoadingOverlay()
 
-                        val intent = Intent(this, com.example.camera2app.gallery.FeedbackScoreActivity::class.java).apply {
-                            putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_CAPTURED_URI, uri.toString())
-                            putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_REFERENCE_URI, "reference_uri_placeholder")
-                            putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_SCORE, score)
-                            putExtra(com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE, feedbackMsg)
+                        val intent = Intent(
+                            this,
+                            com.example.camera2app.gallery.FeedbackScoreActivity::class.java
+                        ).apply {
+                            putExtra(
+                                com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_CAPTURED_URI,
+                                uri.toString()
+                            )
+                            putExtra(
+                                com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_REFERENCE_URI,
+                                "reference_uri_placeholder"
+                            )
+                            putExtra(
+                                com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_SCORE,
+                                score
+                            )
+                            putExtra(
+                                com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
+                                feedbackMsg
+                            )
                         }
                         startActivity(intent)
                     }
@@ -574,7 +687,8 @@ class MainActivity : AppCompatActivity() {
                         // ✅ 레퍼런스 설정 완료
                         isReferenceSet = true
 
-                        Toast.makeText(this@MainActivity, "레퍼런스 포즈 설정 완료 ✅", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MainActivity, "레퍼런스 포즈 설정 완료 ✅", Toast.LENGTH_SHORT)
+                            .show()
 
                         // ✅ 피드백 UI 표시
                         showFeedbackUI()
@@ -844,11 +958,20 @@ class MainActivity : AppCompatActivity() {
         for (fb in feedback) {
             when {
                 fb.category.contains("pose") -> iconPose.setImageDrawable(grayDrawable)
-                fb.category.contains("position") || fb.category.contains("distance") -> iconPosition.setImageDrawable(grayDrawable)
-                fb.category.contains("framing") || fb.category.contains("headroom") -> iconFraming.setImageDrawable(grayDrawable)
+                fb.category.contains("position") || fb.category.contains("distance") -> iconPosition.setImageDrawable(
+                    grayDrawable
+                )
+
+                fb.category.contains("framing") || fb.category.contains("headroom") -> iconFraming.setImageDrawable(
+                    grayDrawable
+                )
+
                 fb.category.contains("angle") -> iconAngle.setImageDrawable(grayDrawable)
                 fb.category.contains("composition") -> iconComposition.setImageDrawable(grayDrawable)
-                fb.category.contains("gaze") || fb.category.contains("look") -> iconGaze.setImageDrawable(grayDrawable)
+                fb.category.contains("gaze") || fb.category.contains("look") -> iconGaze.setImageDrawable(
+                    grayDrawable
+                )
+
                 fb.category == "no_face" -> {
                     // ⭐ 얼굴 없음 = 모든 항목 미확인
                     iconPose.setImageDrawable(grayDrawable)
@@ -965,7 +1088,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.menuReference.setOnClickListener {
-            val intent = Intent(this, com.example.camera2app.reference.ReferenceActivity::class.java)
+            val intent =
+                Intent(this, com.example.camera2app.reference.ReferenceActivity::class.java)
             startActivityForResult(intent, REQUEST_REFERENCE_IMAGE)
         }
     }
@@ -1161,19 +1285,19 @@ class MainActivity : AppCompatActivity() {
     // ---------------------------
     override fun onResume() {
         super.onResume()
-        controller.onResume()
-        controller.setAllAuto()
-        isAllAuto = true
 
-        // ✅ 레퍼런스가 설정된 경우에만 분석 시작 (약간 딜레이)
-        if (isReferenceSet && isAIInitialized) {
+        controller.onResume()
+
+        // 🔥 분석모드 자동 복구
+        if (referenceBitmap != null && isAIInitialized) {
+            isReferenceSet = true
             showFeedbackUI()
-            // ⭐ 카메라 준비 후 분석 시작
             binding.textureView.postDelayed({
                 startRealtimeAnalysis()
             }, 500)
         }
     }
+
 
     override fun onPause() {
         // ⭐ 먼저 분석 중지
