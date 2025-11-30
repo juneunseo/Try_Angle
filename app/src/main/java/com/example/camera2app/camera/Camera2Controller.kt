@@ -37,11 +37,20 @@ import kotlin.math.min
 import android.animation.ValueAnimator
 import android.view.animation.AccelerateDecelerateInterpolator
 
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+
 
 // === manual WB ===
 private var manualWbGains: RggbChannelVector? = null
 
 class Camera2Controller(
+
+
+
+
     private val context: Context,
     private val overlayView: OverlayView,
     private val textureView: TextureView,
@@ -114,11 +123,32 @@ class Camera2Controller(
     enum class FlashMode { OFF, AUTO, ON}
     private var flashMode = FlashMode.OFF
 
+
     private var baseExposureNs: Long? = null
     private var baseIso: Int? = null
 
     // ★ Preview는 고정, Capture는 선택
     private var captureSize: Size = Size(4000, 3000) // 기본 12M
+
+
+    // ⭐ 조도 센서 관련 변수 추가
+    private val lightSensor by lazy {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
+    }
+
+    private var currentLux = 50f  // 현재 밝기 (lux)
+    private val DARK_THRESHOLD = 70f  // 어두움 판단 기준
+
+    private val lightSensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent?) {
+            event?.let {
+                currentLux = it.values[0]
+                println("💡 [LUX] 조도 업데이트: ${currentLux} lux")  // ⭐ 추가
+            }
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
 
     // JPEG 저장 처리 리스너 (재사용)
 
@@ -184,41 +214,21 @@ class Camera2Controller(
         chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
 
     private fun applyFlash(builder: CaptureRequest.Builder, forPreview: Boolean) {
-        if (!flashAvailable()) return
+        if (!flashAvailable() || !forPreview) return
 
         when (flashMode) {
-            FlashMode.OFF -> {
+            FlashMode.OFF, FlashMode.AUTO -> {
+                // ⭐ OFF와 AUTO는 프리뷰에서 플래시 끄기
                 builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
             }
 
-            FlashMode.AUTO -> {
-                // ⭐ 항상 자동 플래시 모드로 설정
-                builder.set(
-                    CaptureRequest.CONTROL_AE_MODE,
-                    CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH
-                )
-                if (!forPreview) {
-                    builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_SINGLE)
-                }
-            }
-
             FlashMode.ON -> {
+                // ON 모드만 프리뷰에서 torch
                 if (manualEnabled) {
-                    builder.set(
-                        CaptureRequest.FLASH_MODE,
-                        if (forPreview) CameraMetadata.FLASH_MODE_TORCH
-                        else CameraMetadata.FLASH_MODE_SINGLE
-                    )
+                    builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH)
                 } else {
-                    builder.set(
-                        CaptureRequest.CONTROL_AE_MODE,
-                        CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH
-                    )
-                    builder.set(
-                        CaptureRequest.FLASH_MODE,
-                        if (forPreview) CameraMetadata.FLASH_MODE_TORCH
-                        else CameraMetadata.FLASH_MODE_SINGLE
-                    )
+                    builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH)
+                    builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH)
                 }
             }
         }
@@ -361,12 +371,24 @@ class Camera2Controller(
         if (textureView.isAvailable)
             openCamera(textureView.width, textureView.height)
 
-
+        // ⭐ 조도 센서 시작
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        lightSensor?.let {
+            sensorManager.registerListener(
+                lightSensorListener,
+                it,
+                SensorManager.SENSOR_DELAY_NORMAL
+            )
+        }
     }
 
     fun onPause() {
         closeSession()
         stopBackground()
+
+        // ⭐ 조도 센서 중지
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        sensorManager.unregisterListener(lightSensorListener)
     }
 
     // =========================================================================================
@@ -604,58 +626,94 @@ class Camera2Controller(
     }
 
     fun takePicture() {
-
-        playShutterFlash()
-
         val device = cameraDevice ?: return
         val jpegSurface = imageReader?.surface ?: return
+
+        playShutterFlash()
 
         val rotation = textureView.display?.rotation ?: Surface.ROTATION_0
         lastJpegOrientation = getJpegOrientation(chars, rotation)
 
+        // ⭐ 플래시 필요 여부를 조도로 판단
+        val needFlash = when (flashMode) {
+            FlashMode.OFF -> false
+            FlashMode.ON -> true
+            FlashMode.AUTO -> currentLux < DARK_THRESHOLD
+        }
+
+        // ⭐ 조도 로그 추가
+        Log.d(TAG, "📸 촬영 - 조도: ${currentLux} lux, 임계값: ${DARK_THRESHOLD}, 플래시: $needFlash")
+
+        // ⭐ 플래시가 필요하면 프리플래시 후 촬영
+        if (needFlash && flashAvailable()) {
+            preFlashThenCapture()
+        } else {
+            captureStillImage(false)
+        }
+    }
+
+    private fun preFlashThenCapture() {
+        val device = cameraDevice ?: return
+        val st = textureView.surfaceTexture ?: return
+        val previewSurface = Surface(st)
+
+        // ⚠️ 여기서 TORCH 켜는 건 필요 없음 (아래에서 바로 촬영하니까)
+        // 바로 TORCH 켠 상태로 촬영!
+
+        captureStillImage(useFlash = true)  // TORCH 모드로 촬영
+
+        // 촬영 후 500ms 뒤 TORCH 끄기
+        bgHandler?.postDelayed({
+            updateRepeating()  // 프리뷰로 복귀 (TORCH 꺼짐)
+        }, 500)
+    }
+
+    private fun captureStillImage(useFlash: Boolean = false) {
+        val device = cameraDevice ?: return
+        val jpegSurface = imageReader?.surface ?: return
 
         val req = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
-
             addTarget(jpegSurface)
 
-            // 회전
             set(CaptureRequest.JPEG_ORIENTATION, lastJpegOrientation)
 
+            // ⭐ Manual 모드일 때 ISO/Exposure 고정
+            if (manualEnabled) {
+                set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF)
+                set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
 
-            // ★★★★★ 핵심 수정 1 — 전면 사진은 무조건 완전 Auto 모드 ★★★★★
-            if (isFrontCamera()) {
-                manualEnabled = false
-            }
-
-            // ★ 플래시 먼저 적용
-            applyFlash(this, false)
-
-            // ★ 공통 컨트롤 (manualEnabled 값에 따라 자동/수동 분기 결정됨)
-            applyCommonControls(this, preview = false)
-
-            // WB, 컬러
-            applyColorAuto(this)
-
-            // 줌 + 화면비 crop
-            applyZoomAndAspect(this)
-
-            // 고품질 처리
-            set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY)
-            set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
-            set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_HIGH_QUALITY)
-
-
-            // ★★★★★ 핵심 수정 2 — 전면 카메라는 강제 ‘순수 AUTO’로 안정화 ★★★★★
-            if (isFrontCamera()) {
+                val safeExp = currentExposureNs.coerceAtMost(frameNs - 300_000L)
+                set(CaptureRequest.SENSOR_EXPOSURE_TIME, safeExp)
+                set(CaptureRequest.SENSOR_SENSITIVITY, currentIso)
+            } else {
                 set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
                 set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-                set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-                set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
             }
+
+            // ⭐ 플래시만 필요할 때만 ON
+            if (flashAvailable()) {
+                if (useFlash) {
+                    set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH)  // ✅ TORCH!
+                } else {
+                    set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
+                }
+            }
+
+            // 기본 설정
+            set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO)
+
+            applyZoomAndAspect(this)
+
+            set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
+            set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY)
+            set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_HIGH_QUALITY)
         }
 
         session?.capture(req.build(), null, bgHandler)
     }
+
+
 
     // =========================================================================================
     // Auto / Manual WB / Color controls
@@ -709,15 +767,11 @@ class Camera2Controller(
         // ============================================================
         // ⭐ 후면 카메라는 기존 로직 그대로 유지
         // ============================================================
-        if (flashMode == FlashMode.AUTO) {
-            // AUTO Flash 모드
-            builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-            builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO)
-            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(targetFps, targetFps))
-
-        } else if (manualEnabled) {
-            // Manual 모드
+        // ============================================================
+// ⭐ 후면 카메라 로직 - AUTO 플래시는 촬영 시에만!
+// ============================================================
+        if (manualEnabled) {
+            // Manual 모드 - ISO/Exposure 고정
             builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF)
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
             builder.set(CaptureRequest.SENSOR_FRAME_DURATION, frameNs)
@@ -729,7 +783,7 @@ class Camera2Controller(
             builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
 
         } else {
-            // AUTO 모드
+            // AUTO 모드 - 카메라가 ISO 자동 조절
             builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
             builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO)

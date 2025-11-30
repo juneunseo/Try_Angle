@@ -10,7 +10,7 @@
     <View
         android:id="@+id/topStatusBar"
         android:layout_width="match_parent"
-        android:layout_height="10dp"
+        android:layout_height="30dp"
         android:background="#FFFFFF"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -35,8 +35,7 @@
             android:id="@+id/btnBack"
             android:layout_width="25dp"
             android:layout_height="25dp"
-            app:srcCompat="@drawable/back_gray" />
-
+            android:src="@drawable/back_gray"/>
 
         <!-- 타이틀 (중앙) -->
         <TextView
@@ -46,14 +45,14 @@
             android:layout_weight="1"
             android:gravity="center"
             android:textSize="20sp"
-            android:textColor="#8D8D8D"/>
+            android:textColor="#000000"/>
 
         <!-- 정보 버튼 -->
         <ImageView
             android:id="@+id/btnInfo"
             android:layout_width="30dp"
             android:layout_height="30dp"
-            android:src="@drawable/info_gray" />
+            android:src="@drawable/info_gray"/>
 
     </LinearLayout>
 
@@ -65,14 +64,13 @@
         app:layout_constraintTop_toBottomOf="@id/topButtonBar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/bottomIconBar"
-        android:background="#FFFFFF"/>
+        app:layout_constraintBottom_toTopOf="@id/bottomIconBar"/>
 
     <!-- 하단 아이콘 바 -->
     <LinearLayout
         android:id="@+id/bottomIconBar"
         android:layout_width="match_parent"
-        android:layout_height="80dp"
+        android:layout_height="70dp"
         android:gravity="center"
         android:orientation="horizontal"
         android:background="#FFFFFF"
@@ -109,7 +107,7 @@
     <View
         android:id="@+id/bottomNavBar"
         android:layout_width="match_parent"
-        android:layout_height="20dp"
+        android:layout_height="30dp"
         android:background="#FFFFFF"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
