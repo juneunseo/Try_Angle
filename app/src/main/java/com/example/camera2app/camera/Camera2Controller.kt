@@ -403,6 +403,14 @@ class Camera2Controller(
     // =========================================================================================
     @SuppressLint("MissingPermission")
     private fun openCamera(w: Int, h: Int) {
+
+
+        if (isFrontCamera()) {
+            val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
+            val sizes = map.getOutputSizes(SurfaceTexture::class.java)
+            previewSize = sizes.maxByOrNull { it.width * it.height }!!
+        }
+
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) return
@@ -727,6 +735,14 @@ class Camera2Controller(
             )
         }
 
+        if (isFrontCamera() && preview) {
+            builder.set(CaptureRequest.NOISE_REDUCTION_MODE,
+                CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
+            builder.set(CaptureRequest.EDGE_MODE,
+                CaptureRequest.EDGE_MODE_HIGH_QUALITY)
+        }
+
+
         applyZoomAndAspect(builder)
     }
 
@@ -790,32 +806,50 @@ class Camera2Controller(
         val cy = vh / 2f
 
         val bufferRatio = previewSize.width.toFloat() / previewSize.height
-
         val matrix = Matrix()
 
+        // 🔥 전면 세로 보정 계수
+        // 1.12f = 세로 12% 확대 (너의 사진 비교 기준 가장 자연스러운 값)
+        val frontYFix = if (isFrontCamera()) 0.90f else 1f
+
+
+        // ============================================================
+        // ❤️ 기존 화면비 변환 로직 (후면 100% 그대로 유지)
+        //    + 전면일 때만 Y축에 frontYFix 곱해줌
+        // ============================================================
         when (aspectMode) {
+
             AspectMode.RATIO_1_1 -> {
                 val cropRatio = 1f
                 val scaleY = cropRatio / bufferRatio
-                matrix.setScale(1f, scaleY, cx, cy)
+                matrix.setScale(1f, scaleY * frontYFix, cx, cy)
             }
+
             AspectMode.RATIO_3_4 -> {
                 val cropRatio = 1f
                 val scaleY = cropRatio / bufferRatio
-                matrix.setScale(1f, scaleY, cx, cy)
+                matrix.setScale(1f, scaleY * frontYFix, cx, cy)
             }
+
             AspectMode.RATIO_9_16 -> {
-                // ✅ 전면/후면 동일한 로직 적용
                 val zoomFactor = (4f / 3f) / (16f / 9f)  // 0.75
                 val baseScaleY = bufferRatio / (16f / 9f)  // 0.75
                 val scale = 1f / zoomFactor  // 1.333
-                matrix.setScale(scale, baseScaleY * scale, cx, cy)
+
+                matrix.setScale(
+                    scale,
+                    (baseScaleY * scale) * frontYFix,  // ← 전면만 자연스럽게 세로 보정
+                    cx, cy
+                )
             }
         }
 
         textureView.setTransform(matrix)
 
-        // 레터박스 계산
+
+        // ============================================================
+        // 기존 레터박스 애니메이션 — 그대로 유지
+        // ============================================================
         val targetH = when (aspectMode) {
             AspectMode.RATIO_1_1 -> vw
             AspectMode.RATIO_3_4 -> vw * (4f / 3f)
@@ -858,6 +892,7 @@ class Camera2Controller(
         }
         rectAnimator?.start()
     }
+
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
