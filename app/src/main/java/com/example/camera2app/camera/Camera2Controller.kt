@@ -604,6 +604,7 @@ class Camera2Controller(
     }
 
     fun takePicture() {
+
         playShutterFlash()
 
         val device = cameraDevice ?: return
@@ -612,24 +613,50 @@ class Camera2Controller(
         val rotation = textureView.display?.rotation ?: Surface.ROTATION_0
         lastJpegOrientation = getJpegOrientation(chars, rotation)
 
+
         val req = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+
             addTarget(jpegSurface)
 
+            // 회전
             set(CaptureRequest.JPEG_ORIENTATION, lastJpegOrientation)
 
-            // ⭐ 순서 변경: 플래시를 먼저 적용
+
+            // ★★★★★ 핵심 수정 1 — 전면 사진은 무조건 완전 Auto 모드 ★★★★★
+            if (isFrontCamera()) {
+                manualEnabled = false
+            }
+
+            // ★ 플래시 먼저 적용
             applyFlash(this, false)
+
+            // ★ 공통 컨트롤 (manualEnabled 값에 따라 자동/수동 분기 결정됨)
             applyCommonControls(this, preview = false)
+
+            // WB, 컬러
             applyColorAuto(this)
+
+            // 줌 + 화면비 crop
             applyZoomAndAspect(this)
 
+            // 고품질 처리
             set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY)
             set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
             set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_HIGH_QUALITY)
+
+
+            // ★★★★★ 핵심 수정 2 — 전면 카메라는 강제 ‘순수 AUTO’로 안정화 ★★★★★
+            if (isFrontCamera()) {
+                set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+                set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+            }
         }
 
         session?.capture(req.build(), null, bgHandler)
     }
+
     // =========================================================================================
     // Auto / Manual WB / Color controls
     // =========================================================================================
@@ -656,93 +683,66 @@ class Camera2Controller(
     // =========================================================================================
     private fun applyCommonControls(builder: CaptureRequest.Builder, preview: Boolean) {
 
-        // ⭐⭐⭐ AUTO 플래시 전용 처리 - 최우선 ⭐⭐⭐
+        // ============================================================
+        // ⭐ 전면 카메라는 무조건 완전 자동 모드 (수동 로직 금지)
+        //    하지만 마지막의 applyZoomAndAspect()는 반드시 실행해야 함!
+        // ============================================================
+        if (isFrontCamera()) {
+
+            // 순수 AUTO 설정
+            builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+            builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+
+            // 고화질 옵션
+            builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
+            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY)
+            builder.set(CaptureRequest.HOT_PIXEL_MODE, CaptureRequest.HOT_PIXEL_MODE_HIGH_QUALITY)
+
+            // ★★★ 아래 applyZoomAndAspect는 return 전이 아니라 무조건 공통 실행! ★★★
+            applyZoomAndAspect(builder)
+            return
+        }
+
+
+        // ============================================================
+        // ⭐ 후면 카메라는 기존 로직 그대로 유지
+        // ============================================================
         if (flashMode == FlashMode.AUTO) {
-            Log.d(TAG, "applyCommonControls: AUTO FLASH MODE")
-
-            // 1. CONTROL_MODE를 명시적으로 AUTO로 설정 (필수!)
+            // AUTO Flash 모드
             builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-
-            // 2. AE는 applyFlash()에서 이미 ON_AUTO_FLASH로 설정됨
-
-            // 3. AF 설정
-            builder.set(
-                CaptureRequest.CONTROL_AF_MODE,
-                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
-            )
-
-            // 4. AWB 자동
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO)
-
-            // 5. FPS 설정
-            builder.set(
-                CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                Range(targetFps, targetFps)
-            )
-
-            // 6. SENSOR 설정은 하지 않음 (AE가 자동으로 조절)
-
-            Log.d(TAG, "AUTO flash: CONTROL_MODE=AUTO, AE=ON_AUTO_FLASH (from applyFlash)")
+            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(targetFps, targetFps))
 
         } else if (manualEnabled) {
-            // ========== 수동 모드 (AUTO 플래시 아닐 때만) ==========
-            Log.d(TAG, "applyCommonControls: MANUAL MODE")
-
-            builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_OFF)
-            builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
-
+            // Manual 모드
+            builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_OFF)
+            builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
             builder.set(CaptureRequest.SENSOR_FRAME_DURATION, frameNs)
 
             val safeExp = currentExposureNs.coerceAtMost(frameNs - 300_000L)
             builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, safeExp)
             builder.set(CaptureRequest.SENSOR_SENSITIVITY, currentIso)
 
-            builder.set(
-                CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                Range(targetFps, targetFps)
-            )
-            builder.set(
-                CaptureRequest.CONTROL_AE_ANTIBANDING_MODE,
-                CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_60HZ
-            )
-            builder.set(
-                CaptureRequest.CONTROL_AF_MODE,
-                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
-            )
-
-            if (preview) {
-                builder.set(
-                    CaptureRequest.NOISE_REDUCTION_MODE,
-                    CaptureRequest.NOISE_REDUCTION_MODE_FAST
-                )
-                builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_FAST)
-            }
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
 
         } else {
-            // ========== 자동 모드 ==========
-            Log.d(TAG, "applyCommonControls: AUTO MODE")
-
-            builder.set(
-                CaptureRequest.CONTROL_AF_MODE,
-                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
-            )
+            // AUTO 모드
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
             builder.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO)
             builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentExp)
-            builder.set(
-                CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                Range(targetFps, targetFps)
-            )
         }
 
-        if (isFrontCamera() && preview) {
-            builder.set(CaptureRequest.NOISE_REDUCTION_MODE,
-                CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
-            builder.set(CaptureRequest.EDGE_MODE,
-                CaptureRequest.EDGE_MODE_HIGH_QUALITY)
+        // 후면 자동 프리뷰 고화질 옵션
+        if (preview) {
+            builder.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY)
+            builder.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY)
         }
 
-
+        // ⭐ 반드시 마지막에 센서 crop 실행
         applyZoomAndAspect(builder)
     }
 
