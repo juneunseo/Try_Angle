@@ -106,7 +106,7 @@ class MainActivity : AppCompatActivity() {
 
             println("🔥 MainActivity: 분석모드로 진입함")
 
-            showLoadingOverlay()
+            showAnalysisLoadingOverlay()
 
             val refUri = Uri.parse(refUriString)
 
@@ -175,7 +175,18 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-        // ✅ 피드백 UI 초기화
+    private fun showAnalysisLoadingOverlay() {
+        if (loadingOverlay != null) return
+
+        val inflater = LayoutInflater.from(this)
+        loadingOverlay = inflater.inflate(R.layout.loading_overlay2, null)
+
+        val rootView = findViewById<ViewGroup>(android.R.id.content)
+        rootView.addView(loadingOverlay)
+    }
+
+
+    // ✅ 피드백 UI 초기화
     private fun initFeedbackUI() {
         feedbackStatusContainer = findViewById(R.id.feedbackStatusContainer)
         feedbackMessageContainer = findViewById(R.id.feedbackMessageContainer)
