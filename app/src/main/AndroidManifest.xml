@@ -14,10 +14,13 @@
 
     <application
         android:allowBackup="true"
-        android:label="Camera2App"
+        android:label="TryAngle"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.Material3.DayNight.NoActionBar">
 
-        <!-- 런처 액티비티 -->
+
+    <!-- 런처 액티비티 -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -63,7 +66,6 @@
         </provider>
 
         <activity android:name=".gallery.FeedbackScoreActivity" />
-
 
     </application>
 </manifest>
