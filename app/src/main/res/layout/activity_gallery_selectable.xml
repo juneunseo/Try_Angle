@@ -15,7 +15,7 @@
         <!-- 상단 여백 -->
         <View
             android:layout_width="match_parent"
-            android:layout_height="50dp"
+            android:layout_height="30dp"
             android:background="#FFFFFF" />
 
         <!-- 상단바 -->
@@ -54,7 +54,7 @@
                 android:layout_height="32dp"
                 android:background="@android:color/transparent"
                 android:padding="6dp"
-                android:src="@android:drawable/ic_menu_manage"
+                android:src="@drawable/ic_settings"
                 app:tint="#000000"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true" />

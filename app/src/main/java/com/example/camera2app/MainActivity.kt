@@ -70,6 +70,12 @@ class MainActivity : AppCompatActivity() {
     private var isCapturing = false
 
 
+    // ✅ 마지막 촬영 사진 (AI 분석용 + 썸네일)
+    private var lastCapturedUri: Uri? = null
+    private var lastCapturedBitmap: Bitmap? = null
+
+
+
     companion object {
         private const val REQUEST_REFERENCE_IMAGE = 2001
     }
@@ -307,10 +313,24 @@ class MainActivity : AppCompatActivity() {
             textureView = binding.textureView,
             onFrameLevelChanged = {},
             onSaved = { uri ->
+
                 val bitmap = uriToBitmap(uri)
+
                 if (bitmap != null) {
-                    processCapturedPhoto(bitmap, uri)
+                    // 🔥 최근 촬영 사진 / 썸네일 업데이트
+                    runOnUiThread {
+                        lastCapturedUri = uri
+                        lastCapturedBitmap = bitmap
+
+                        binding.lastThumbnail.visibility = View.VISIBLE
+                        binding.lastThumbnail.setImageBitmap(bitmap)
+                    }
                 }
+
+                // 🔥 촬영 종료 → 피드백 UI 다시 움직일 수 있게
+                Handler(Looper.getMainLooper()).postDelayed({
+                    isCapturing = false
+                }, 500)
             },
             previewContainer = binding.previewContainer
         ) { fps ->
@@ -318,6 +338,7 @@ class MainActivity : AppCompatActivity() {
                 binding.fpsText.text = String.format(Locale.US, "%.1f FPS", fps)
             }
         }
+
 
         controller.setTimerCountdownCallback { remaining ->
             runOnUiThread {
@@ -556,10 +577,6 @@ class MainActivity : AppCompatActivity() {
             e.printStackTrace()
         }
 
-        // ⭐ 촬영 종료 – UI 업데이트는 500ms 뒤에 허용
-        Handler(Looper.getMainLooper()).postDelayed({
-            isCapturing = false
-        }, 500)
 
 
     }
@@ -1103,6 +1120,21 @@ class MainActivity : AppCompatActivity() {
                 Intent(this, com.example.camera2app.reference.ReferenceActivity::class.java)
             startActivityForResult(intent, REQUEST_REFERENCE_IMAGE)
         }
+
+        // ✅ 최근 촬영 썸네일 클릭 → 그때 Score 화면으로 이동
+        binding.lastThumbnail.setOnClickListener {
+            val uri = lastCapturedUri
+            val bitmap = lastCapturedBitmap
+
+            if (uri == null || bitmap == null) {
+                Toast.makeText(this, "최근 촬영된 사진이 없습니다.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // 🔥 여기서 비로소 AI 분석 + ScoreActivity 이동
+            processCapturedPhoto(bitmap, uri)
+        }
+
     }
 
     // ---------------------------

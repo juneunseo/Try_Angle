@@ -44,8 +44,6 @@ class FeedbackScoreActivity : ComponentActivity() {
         // 점수 표시
         binding.scoreText.text = String.format("%.1f", score)
 
-        // 피드백 메시지 표시
-        binding.feedbackMessage.text = feedbackMessage
 
         // 뒤로가기 버튼
         binding.btnBack.setOnClickListener {

@@ -84,8 +84,8 @@
     <!-- ▼ 옵션 버튼 (하단 바 위 오른쪽) -->
     <ImageView
         android:id="@+id/btnOptions"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
         android:layout_gravity="bottom|end"
         android:src="@drawable/options"
         android:padding="6dp"
@@ -93,7 +93,7 @@
         android:layout_marginBottom="180dp"
         android:elevation="30dp" />
 
-    <!-- ★ 옵션바 - 균일 정렬 버전 -->
+    <!-- ★ 옵션바 -->
     <LinearLayout
         android:id="@+id/optionBar"
         android:layout_width="wrap_content"
@@ -109,8 +109,6 @@
         android:elevation="20dp"
         android:visibility="gone">
 
-
-    <!-- EXP -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
@@ -126,7 +124,6 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
-        <!-- Timer -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
@@ -141,7 +138,6 @@
                 app:srcCompat="@drawable/btn_timer" />
         </LinearLayout>
 
-        <!-- Ratio -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
@@ -159,7 +155,6 @@
                 android:paddingVertical="8dp" />
         </LinearLayout>
 
-        <!-- Flash -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
@@ -175,7 +170,6 @@
                 app:tint="#FFFFFF" />
         </LinearLayout>
 
-        <!-- Close -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
@@ -191,7 +185,6 @@
         </LinearLayout>
 
     </LinearLayout>
-
 
     <!-- ▼ UI 박스 (하단바 + 메뉴) -->
     <LinearLayout
@@ -213,11 +206,30 @@
             android:background="#88000000"
             android:paddingHorizontal="24dp">
 
-            <View
+            <!-- 왼쪽 영역 -->
+            <LinearLayout
                 android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="horizontal"
+                android:gravity="center">
 
+                <!-- ⭐ 둥근 썸네일 -->
+                <ImageView
+                    android:id="@+id/lastThumbnail"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:scaleType="centerCrop"
+                    android:background="@drawable/thumbnail_round"
+                    android:padding="0dp"
+                    android:clipToOutline="true"
+                    android:elevation="24dp"
+                    android:visibility="gone" />
+
+            </LinearLayout>
+
+
+            <!-- 중앙 셔터 -->
             <ImageButton
                 android:id="@+id/btnShutter"
                 android:layout_width="84dp"
@@ -225,26 +237,26 @@
                 android:background="@android:color/transparent"
                 app:srcCompat="@drawable/ic_shutter" />
 
+            <!-- 오른쪽 영역 -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:gravity="center_vertical|end"
+                android:layout_weight="1"
                 android:orientation="horizontal"
-                android:layout_weight="1.0">
+                android:gravity="center_vertical|end">
 
                 <ImageButton
                     android:id="@+id/btnSwitch"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
                     android:layout_marginEnd="23dp"
-                    android:layout_marginTop="2dp"
                     android:background="@android:color/transparent"
                     app:srcCompat="@drawable/ic_switch_camera" />
             </LinearLayout>
-
         </LinearLayout>
 
-        <!-- ▼ 하단 메뉴 -->
+
+        <!-- ▼ 하단 메뉴 (여기 있어야 함!) -->
         <LinearLayout
             android:id="@+id/bottomMenu"
             android:layout_width="match_parent"
@@ -286,7 +298,9 @@
                 android:textColor="#CCCCCC"
                 android:textSize="14sp" />
         </LinearLayout>
+
     </LinearLayout>
+
 
     <!-- ▼ 촬영 플래시 -->
     <View
@@ -297,9 +311,7 @@
         android:alpha="0"
         android:clickable="false" />
 
-
-
-    <!-- ▼ 피드백 상태 표시 (왼쪽) -->
+    <!-- ▼ 피드백 상태 표시 -->
     <LinearLayout
         android:id="@+id/feedbackStatusContainer"
         android:layout_width="wrap_content"
@@ -319,12 +331,14 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:layout_marginBottom="4dp">
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="포즈"
                 android:textColor="#FFFFFF"
                 android:textSize="13sp" />
+
             <ImageView
                 android:id="@+id/iconPose"
                 android:layout_width="20dp"
@@ -340,12 +354,14 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:layout_marginBottom="4dp">
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="인물 위치"
                 android:textColor="#FFFFFF"
                 android:textSize="13sp" />
+
             <ImageView
                 android:id="@+id/iconPosition"
                 android:layout_width="20dp"
@@ -361,12 +377,14 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:layout_marginBottom="4dp">
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="프레이밍"
                 android:textColor="#FFFFFF"
                 android:textSize="13sp" />
+
             <ImageView
                 android:id="@+id/iconFraming"
                 android:layout_width="20dp"
@@ -382,12 +400,14 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:layout_marginBottom="4dp">
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="카메라 앵글"
                 android:textColor="#FFFFFF"
                 android:textSize="13sp" />
+
             <ImageView
                 android:id="@+id/iconAngle"
                 android:layout_width="20dp"
@@ -403,12 +423,14 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:layout_marginBottom="4dp">
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="구도"
                 android:textColor="#FFFFFF"
                 android:textSize="13sp" />
+
             <ImageView
                 android:id="@+id/iconComposition"
                 android:layout_width="20dp"
@@ -423,12 +445,14 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical">
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="시선"
                 android:textColor="#FFFFFF"
                 android:textSize="13sp" />
+
             <ImageView
                 android:id="@+id/iconGaze"
                 android:layout_width="20dp"
@@ -436,9 +460,10 @@
                 android:layout_marginStart="8dp"
                 android:src="@drawable/ic_select_empty" />
         </LinearLayout>
+
     </LinearLayout>
 
-    <!-- ▼ 피드백 메시지 (하단) -->
+    <!-- ▼ 피드백 메시지 -->
     <LinearLayout
         android:id="@+id/feedbackMessageContainer"
         android:layout_width="wrap_content"
