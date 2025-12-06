@@ -4,9 +4,16 @@
     android:shape="rectangle">
 
     <!-- 빨간색 배경 -->
-    <solid android:color="#E63946"/>
+    <solid android:color="#BE1818"/>
 
-    <!-- 모서리 둥글게 -->
-    <corners android:radius="8dp"/>
+    <!-- 더 둥근 모양 (pill 배지) -->
+    <corners android:radius="20dp"/>
+
+    <!-- 내부 패딩 -->
+    <padding
+        android:left="18dp"
+        android:right="18dp"
+        android:top="6dp"
+        android:bottom="6dp" />
 
 </shape>
