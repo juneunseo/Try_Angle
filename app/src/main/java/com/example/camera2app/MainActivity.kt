@@ -160,6 +160,10 @@ class MainActivity : AppCompatActivity() {
                         hideLoadingOverlay()
                         showFeedbackUI()
 
+                        binding.lastThumbnail.visibility = View.GONE
+                        binding.lastThumbnail.setImageBitmap(null)
+                        binding.lastThumbnail.background = null
+
                         binding.textureView.postDelayed({
                             startRealtimeAnalysis()
                         }, 500)
@@ -322,8 +326,15 @@ class MainActivity : AppCompatActivity() {
                         lastCapturedUri = uri
                         lastCapturedBitmap = bitmap
 
-                        binding.lastThumbnail.visibility = View.VISIBLE
-                        binding.lastThumbnail.setImageBitmap(bitmap)
+                        if (isReferenceSet) {
+                            binding.lastThumbnail.background = resources.getDrawable(R.drawable.thumbnail_round, null)
+                            binding.lastThumbnail.setImageBitmap(bitmap) // ⭐ 이거 꼭 있어야 함
+                            binding.lastThumbnail.visibility = View.VISIBLE
+
+                        } else {
+                            binding.lastThumbnail.visibility = View.GONE
+                        }
+
                     }
                 }
 
@@ -747,6 +758,9 @@ class MainActivity : AppCompatActivity() {
         referenceBitmap?.recycle()
         referenceBitmap = null
         println("🛑 레퍼런스 해제, 분석 모드 종료")
+
+        binding.lastThumbnail.visibility = View.GONE
+
     }
 
     // ✅ 실시간 포즈 분석 시작 - 더 안전한 버전
