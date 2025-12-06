@@ -202,11 +202,11 @@
             android:layout_width="match_parent"
             android:layout_height="100dp"
             android:orientation="horizontal"
-            android:gravity="center"
+            android:gravity="center_vertical"
             android:background="#88000000"
-            android:paddingHorizontal="24dp">
+            android:paddingHorizontal="0dp">
 
-            <!-- 왼쪽 영역 -->
+            <!-- 왼쪽 영역 (갤러리 썸네일 자리) -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="match_parent"
@@ -214,28 +214,31 @@
                 android:orientation="horizontal"
                 android:gravity="center">
 
-                <!-- ⭐ 둥근 썸네일 -->
                 <ImageView
                     android:id="@+id/lastThumbnail"
                     android:layout_width="60dp"
                     android:layout_height="60dp"
                     android:scaleType="centerCrop"
                     android:background="@drawable/thumbnail_round"
-                    android:padding="0dp"
                     android:clipToOutline="true"
                     android:elevation="24dp"
                     android:visibility="gone" />
-
             </LinearLayout>
 
+            <!-- 중앙 셔터 (완전 중앙으로 오도록 weight=1) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center">
 
-            <!-- 중앙 셔터 -->
-            <ImageButton
-                android:id="@+id/btnShutter"
-                android:layout_width="84dp"
-                android:layout_height="84dp"
-                android:background="@android:color/transparent"
-                app:srcCompat="@drawable/ic_shutter" />
+                <ImageButton
+                    android:id="@+id/btnShutter"
+                    android:layout_width="84dp"
+                    android:layout_height="84dp"
+                    android:background="@android:color/transparent"
+                    app:srcCompat="@drawable/ic_shutter" />
+            </LinearLayout>
 
             <!-- 오른쪽 영역 -->
             <LinearLayout
@@ -243,17 +246,19 @@
                 android:layout_height="match_parent"
                 android:layout_weight="1"
                 android:orientation="horizontal"
-                android:gravity="center_vertical|end">
+                android:gravity="center">
 
                 <ImageButton
                     android:id="@+id/btnSwitch"
                     android:layout_width="48dp"
                     android:layout_height="48dp"
-                    android:layout_marginEnd="23dp"
+                    android:layout_marginEnd="0dp"
                     android:background="@android:color/transparent"
                     app:srcCompat="@drawable/ic_switch_camera" />
             </LinearLayout>
+
         </LinearLayout>
+
 
 
         <!-- ▼ 하단 메뉴 (여기 있어야 함!) -->
