@@ -231,34 +231,32 @@ class MainActivity : AppCompatActivity() {
                 val bbox = yoloxDetector.detectPerson(bitmap)
                 val refBbox = yoloxDetector.detectPerson(referenceBitmap!!)
 
-                if (bbox == null || refBbox == null) {
-                    runOnUiThread {
-                        hideLoadingOverlay()
-                        Toast.makeText(this, "사람 인식 실패", Toast.LENGTH_SHORT).show()
+                // ✅ 기본값: 실패 기준
+                var finalScore = 0f
+                var finalMessage = "사람 인식 실패"
+
+                if (bbox != null && refBbox != null) {
+                    val pose1 = poseEstimator.estimatePose(bitmap, bbox)
+                    val pose2 = poseEstimator.estimatePose(referenceBitmap!!, refBbox)
+
+                    if (pose1 != null && pose2 != null) {
+                        finalScore = calculatePoseSimilarity(pose1, pose2)
+                        finalMessage = generateFeedbackMessage(finalScore)
+                    } else {
+                        finalScore = 0f
+                        finalMessage = "포즈 추정 실패"
                     }
-                    return@Thread
+                } else {
+                    finalScore = 0f
+                    finalMessage = "사람 인식 실패"
                 }
-
-                val pose1 = poseEstimator.estimatePose(bitmap, bbox)
-                val pose2 = poseEstimator.estimatePose(referenceBitmap!!, refBbox)
-
-                if (pose1 == null || pose2 == null) {
-                    runOnUiThread {
-                        hideLoadingOverlay()
-                        Toast.makeText(this, "포즈 추정 실패", Toast.LENGTH_SHORT).show()
-                    }
-                    return@Thread
-                }
-
-                val score = calculatePoseSimilarity(pose1, pose2)
-                val msg = generateFeedbackMessage(score)
 
                 runOnUiThread {
                     hideLoadingOverlay()
 
                     val intent = Intent(
                         this,
-                        com.example.camera2app.gallery.FeedbackScoreActivity::class.java
+                        FeedbackScoreActivity::class.java
                     ).apply {
                         putExtra(
                             FeedbackScoreActivity.EXTRA_CAPTURED_URI,
@@ -267,20 +265,22 @@ class MainActivity : AppCompatActivity() {
 
                         putExtra(
                             FeedbackScoreActivity.EXTRA_REFERENCE_URI,
-                            referenceUri?.toString()   // ✅ 이거 필수
+                            referenceUri?.toString()
                         )
 
+                        // ✅ 실패면 자동으로 0점 들어감
                         putExtra(
                             FeedbackScoreActivity.EXTRA_SCORE,
-                            score
+                            finalScore
                         )
 
+                        // ✅ 실패 메시지도 전달
                         putExtra(
                             FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
-                            msg
+                            finalMessage
                         )
-
                     }
+
                     startActivity(intent)
                 }
 
@@ -288,10 +288,34 @@ class MainActivity : AppCompatActivity() {
                 e.printStackTrace()
                 runOnUiThread {
                     hideLoadingOverlay()
-                    Toast.makeText(this, "분석 실패: ${e.message}", Toast.LENGTH_LONG).show()
+
+                    val intent = Intent(
+                        this,
+                        FeedbackScoreActivity::class.java
+                    ).apply {
+                        putExtra(
+                            FeedbackScoreActivity.EXTRA_CAPTURED_URI,
+                            uri.toString()
+                        )
+                        putExtra(
+                            FeedbackScoreActivity.EXTRA_REFERENCE_URI,
+                            referenceUri?.toString()
+                        )
+                        putExtra(
+                            FeedbackScoreActivity.EXTRA_SCORE,
+                            0f
+                        )
+                        putExtra(
+                            FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
+                            "분석 중 오류 발생"
+                        )
+                    }
+
+                    startActivity(intent)
                 }
             }
         }.start()
+
 
 
     }
