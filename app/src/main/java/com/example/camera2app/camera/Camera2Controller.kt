@@ -44,6 +44,11 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 
+import com.example.camera2app.ai.CameraAspectRatio
+import com.example.camera2app.ai.RealtimeAnalyzer
+
+
+
 
 // === manual WB ===
 private var manualWbGains: RggbChannelVector? = null
@@ -121,6 +126,9 @@ class Camera2Controller(
     private val MAX_W = 4000
     private val MAX_H = 4000
 
+    private val realtimeAnalyzer = RealtimeAnalyzer(context)
+
+
     // flash
     enum class FlashMode { OFF, AUTO, ON}
     private var flashMode = FlashMode.OFF
@@ -175,6 +183,14 @@ class Camera2Controller(
 
             // 화면 비율 크롭
             val cropped = cropToAspect(rotated, aspectMode)
+
+            realtimeAnalyzer.analyzeFrame(
+                bitmap = cropped,
+                isFrontCamera = isFrontCamera(),
+                currentAspectRatio = CameraAspectRatio.from(aspectMode.ordinal)
+
+            )
+
 
             // -------------- 🔥 포즈 추론 시작 --------------
             try {

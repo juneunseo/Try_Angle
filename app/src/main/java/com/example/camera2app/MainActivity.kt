@@ -22,6 +22,8 @@ import java.util.*
 import android.util.Log
 import android.content.pm.PackageManager
 import com.example.camera2app.gallery.FeedbackScoreActivity
+import com.example.camera2app.ai.TryAngleOnDeviceAnalyzer
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -32,6 +34,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var yoloxDetector: YoloXDetector
     private lateinit var poseEstimator: RTMPoseEstimator
     private var isAIInitialized = false
+
+    // ✅ v1.5 온디바이스 통합 분석기
+    private lateinit var tryAngleAnalyzer: TryAngleOnDeviceAnalyzer
+
 
 
     // ✅ 마지막 캡쳐
@@ -141,7 +147,14 @@ class MainActivity : AppCompatActivity() {
                 yoloxDetector = YoloXDetector(this)
                 poseEstimator = RTMPoseEstimator(this)
 
+                tryAngleAnalyzer = TryAngleOnDeviceAnalyzer(
+                    context = this,
+                    enableLegacySystem = false
+                )
+
+
                 isAIInitialized = true
+
                 val time = System.currentTimeMillis() - start
 
                 runOnUiThread {
@@ -378,6 +391,55 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun processCapturedPhotoV15(bitmap: Bitmap, uri: Uri) {
+
+        if (!isAIInitialized) {
+            Toast.makeText(this, "AI 로딩 중...", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        showLoadingOverlay()
+
+        tryAngleAnalyzer.analyzeFrame(bitmap) { feedback ->
+
+            runOnUiThread {
+                hideLoadingOverlay()
+
+                val intent = Intent(
+                    this,
+                    FeedbackScoreActivity::class.java
+                ).apply {
+
+                    putExtra(
+                        FeedbackScoreActivity.EXTRA_CAPTURED_URI,
+                        uri.toString()
+                    )
+
+                    putExtra(
+                        FeedbackScoreActivity.EXTRA_REFERENCE_URI,
+                        referenceUri?.toString()
+                    )
+
+                    // ✅ v1.5 점수 → perfectScore로 사용
+                    val score = (feedback.compressionInfo?.index ?: 0.5f) * 10f
+                    putExtra(
+                        FeedbackScoreActivity.EXTRA_SCORE,
+                        score
+                    )
+
+                    // ✅ v1.5 핵심 메시지
+                    putExtra(
+                        FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
+                        feedback.primary
+                    )
+                }
+
+                startActivity(intent)
+            }
+        }
+    }
+
+
 
     // ✅ 포즈 유사도 계산
     private fun calculatePoseSimilarity(
@@ -481,7 +543,7 @@ class MainActivity : AppCompatActivity() {
             val bmp = lastCapturedBitmap
             val uri = lastCapturedUri
             if (bmp != null && uri != null) {
-                processCapturedPhoto(bmp, uri)
+                processCapturedPhotoV15(bmp, uri)   // ✅ v1.5 연결
             }
         }
 
