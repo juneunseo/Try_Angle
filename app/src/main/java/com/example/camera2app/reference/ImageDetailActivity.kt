@@ -123,24 +123,19 @@ class ImageDetailActivity : AppCompatActivity() {
 
         uiScope.launch(Dispatchers.IO) {
             try {
-                val resultIntent = Intent(this@ImageDetailActivity, MainActivity::class.java)
-
-                // ✅ 분석 모드 ON
-                resultIntent.putExtra("analysis_mode", true)
-
                 var finalUri: Uri? = null
 
                 if (imageResId != 0) {
-                    // ✅ 리소스 → Bitmap 로드
+                    // ✅ 리소스 → Bitmap
                     val bitmap = BitmapFactory.decodeResource(resources, imageResId)
 
-                    // ✅ 파일로 저장
+                    // ✅ 캐시에 파일 저장
                     val file = File(cacheDir, "ref_${System.currentTimeMillis()}.jpg")
                     FileOutputStream(file).use { out ->
                         bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
                     }
 
-                    // ✅ 파일 URI 생성
+                    // ✅ FileProvider URI
                     finalUri = FileProvider.getUriForFile(
                         this@ImageDetailActivity,
                         "${packageName}.fileprovider",
@@ -154,21 +149,27 @@ class ImageDetailActivity : AppCompatActivity() {
                 if (finalUri == null) {
                     withContext(Dispatchers.Main) {
                         hideLoading()
-                        Toast.makeText(this@ImageDetailActivity, "이미지 처리 실패", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            this@ImageDetailActivity,
+                            "이미지 처리 실패",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                     return@launch
                 }
 
-                // ✅ 레퍼런스 URI 전달
-                resultIntent.putExtra("reference_uri", finalUri.toString())
-
-                // ✅ 권한 유지
-                resultIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                // ✅✅✅ 여기부터가 핵심이다
+                val resultIntent = Intent().apply {
+                    data = finalUri   // ✅ MainActivity에서 data?.data 로 받는다
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
 
                 withContext(Dispatchers.Main) {
                     hideLoading()
-                    startActivity(resultIntent)
-                    finishAffinity()
+
+                    // ✅✅✅ MainActivity를 새로 띄우는 게 아니라 결과만 돌려보낸다
+                    setResult(RESULT_OK, resultIntent)
+                    finish()
                 }
 
             } catch (e: Exception) {
@@ -183,6 +184,7 @@ class ImageDetailActivity : AppCompatActivity() {
             }
         }
     }
+
 
     override fun onDestroy() {
         super.onDestroy()

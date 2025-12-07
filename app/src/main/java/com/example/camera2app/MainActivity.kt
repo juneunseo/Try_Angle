@@ -32,9 +32,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var poseEstimator: RTMPoseEstimator
     private var isAIInitialized = false
 
-    // ✅ 레퍼런스
-    private var referenceBitmap: Bitmap? = null
-    private var isReferenceSet = false
 
     // ✅ 마지막 캡쳐
     private var lastCapturedBitmap: Bitmap? = null
@@ -48,6 +45,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rootFrame: FrameLayout
     private var isAllAuto = true
     private var optionVisible = false
+
+    private var referenceUri: Uri? = null
+    private var referenceBitmap: Bitmap? = null
+
 
     companion object {
         private const val REQUEST_REFERENCE_IMAGE = 2001
@@ -94,13 +95,7 @@ class MainActivity : AppCompatActivity() {
                 override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
             }
 
-        // 실제 크기 잡힌 뒤 한 번 더 시도
-        binding.textureView.doOnLayout {
-            Log.e("CAMERA_FLOW", "✅ TextureView 실제 크기: ${it.width} x ${it.height}")
-            if (!::controller.isInitialized) {
-                initCameraController()
-            }
-        }
+
     }
 
     // ----------------------------------------------------
@@ -152,6 +147,7 @@ class MainActivity : AppCompatActivity() {
     // 카메라 컨트롤러
     // ----------------------------------------------------
     private fun initCameraController() {
+        if (::controller.isInitialized) return   // ✅ 이거 없으면 무조건 또 터진다
         Log.e("CAMERA_FLOW", "✅ initCameraController() 진입")
 
         controller = Camera2Controller(
@@ -207,21 +203,30 @@ class MainActivity : AppCompatActivity() {
     // 촬영 → AI 분석
     // ----------------------------------------------------
     private fun processCapturedPhoto(bitmap: Bitmap, uri: Uri) {
+
         if (!isAIInitialized) {
             Toast.makeText(this, "AI 로딩 중...", Toast.LENGTH_SHORT).show()
             return
         }
 
-        if (!isReferenceSet || referenceBitmap == null) {
+        // ✅ 레퍼런스 없으면 URI로 자동 복원
+        if (referenceBitmap == null) {
+            if (referenceUri != null) {
+                referenceBitmap = uriToBitmap(referenceUri!!)
+            }
+        }
+
+// ✅ 그래도 없으면 막는다
+        if (referenceBitmap == null) {
             Toast.makeText(this, "레퍼런스를 먼저 설정하세요", Toast.LENGTH_SHORT).show()
             return
         }
+
 
         showLoadingOverlay()
 
         Thread {
             try {
-                // 1. 사람 검출
                 val bbox = yoloxDetector.detectPerson(bitmap)
                 val refBbox = yoloxDetector.detectPerson(referenceBitmap!!)
 
@@ -233,7 +238,6 @@ class MainActivity : AppCompatActivity() {
                     return@Thread
                 }
 
-                // 2. 포즈 추정
                 val pose1 = poseEstimator.estimatePose(bitmap, bbox)
                 val pose2 = poseEstimator.estimatePose(referenceBitmap!!, refBbox)
 
@@ -245,7 +249,6 @@ class MainActivity : AppCompatActivity() {
                     return@Thread
                 }
 
-                // 3. 유사도 점수
                 val score = calculatePoseSimilarity(pose1, pose2)
                 val msg = generateFeedbackMessage(score)
 
@@ -280,6 +283,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.start()
+
+
     }
 
     // ✅ 포즈 유사도 계산
@@ -394,6 +399,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+
     // ----------------------------------------------------
     // 레퍼런스 처리
     // ----------------------------------------------------
@@ -402,11 +409,17 @@ class MainActivity : AppCompatActivity() {
 
         if (requestCode == REQUEST_REFERENCE_IMAGE && resultCode == RESULT_OK) {
             val uri = data?.data ?: return
+
+            referenceUri = uri
             referenceBitmap = uriToBitmap(uri)
-            isReferenceSet = true
+
             Toast.makeText(this, "✅ 레퍼런스 설정 완료", Toast.LENGTH_SHORT).show()
+
+
         }
     }
+
+
 
     // Bitmap 로딩
     private fun uriToBitmap(uri: Uri): Bitmap? {
@@ -663,8 +676,16 @@ class MainActivity : AppCompatActivity() {
     // ----------------------------------------------------
     override fun onResume() {
         super.onResume()
-        // 🔥 여기서는 controller 건드리지 않음 (프리뷰 흐름 그대로 유지)
+
+        if (binding.textureView.isAvailable && ::controller.isInitialized) {
+            binding.textureView.post {
+                controller.onResume()
+            }
+        }
     }
+
+
+
 
     override fun onPause() {
         if (::controller.isInitialized) {
