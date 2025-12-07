@@ -129,8 +129,12 @@ class YoloXDetector(private val context: Context) {
 
         val output = session.run(mapOf(session.inputNames.iterator().next() to tensor))
 
-        val dets = output[0].value as Array<FloatArray>
-        val labels = output[1].value as LongArray
+        val dets3D = output[0].value as Array<Array<FloatArray>>   // [1][N][5]
+        val labels2D = output[1].value as Array<LongArray>        // [1][N]
+
+        val dets = dets3D[0]      // [N][5]
+        val labels = labels2D[0] // [N]
+
 
         return parseBoxes(dets, labels, bitmap.width, bitmap.height)
     }

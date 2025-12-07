@@ -21,6 +21,7 @@ import kotlinx.coroutines.*
 import java.util.*
 import android.util.Log
 import android.content.pm.PackageManager
+import com.example.camera2app.gallery.FeedbackScoreActivity
 
 class MainActivity : AppCompatActivity() {
 
@@ -260,17 +261,25 @@ class MainActivity : AppCompatActivity() {
                         com.example.camera2app.gallery.FeedbackScoreActivity::class.java
                     ).apply {
                         putExtra(
-                            com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_CAPTURED_URI,
+                            FeedbackScoreActivity.EXTRA_CAPTURED_URI,
                             uri.toString()
                         )
+
                         putExtra(
-                            com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_SCORE,
+                            FeedbackScoreActivity.EXTRA_REFERENCE_URI,
+                            referenceUri?.toString()   // ✅ 이거 필수
+                        )
+
+                        putExtra(
+                            FeedbackScoreActivity.EXTRA_SCORE,
                             score
                         )
+
                         putExtra(
-                            com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
+                            FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
                             msg
                         )
+
                     }
                     startActivity(intent)
                 }
@@ -426,15 +435,20 @@ class MainActivity : AppCompatActivity() {
         return try {
             if (Build.VERSION.SDK_INT >= 28) {
                 val source = ImageDecoder.createSource(contentResolver, uri)
-                ImageDecoder.decodeBitmap(source)
+                ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE  // ✅ 핵심
+                    decoder.isMutableRequired = true                     // ✅ 핵심
+                }
             } else {
                 @Suppress("DEPRECATION")
                 MediaStore.Images.Media.getBitmap(contentResolver, uri)
             }
         } catch (e: Exception) {
+            e.printStackTrace()
             null
         }
     }
+
 
     // ----------------------------------------------------
     // 로딩 오버레이

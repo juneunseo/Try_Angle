@@ -153,7 +153,6 @@ class GroundingDinoONNX(private val context: Context) {
             longArrayOf(1, 3, inputSize.toLong(), inputSize.toLong())
         )
 
-
         val mask = LongArray(inputSize * inputSize) { 1L }
         val maskBuffer = LongBuffer.wrap(mask)
 
@@ -163,21 +162,30 @@ class GroundingDinoONNX(private val context: Context) {
             longArrayOf(1, inputSize.toLong(), inputSize.toLong())
         )
 
-
         val textInputs = createTextInputs()
 
         val inputs = HashMap<String, OnnxTensor>().apply {
-            put("pixel_values", pixelValues)
-            put("pixel_mask", pixelMask)
+            put("images", pixelValues)
+            put("masks", pixelMask)
             putAll(textInputs)
         }
 
         val outputs = sess.run(inputs)
 
-        // logits: [1, 900, 256]
-        val logitsRaw = outputs[0].value as Array<Array<FloatArray>>
-        // pred_boxes: [1, 900, 4]
-        val boxesRaw = outputs[1].value as Array<Array<FloatArray>>
+        android.util.Log.e("DINO", "outputs.size = ${outputs.size()}")
+
+        outputs.forEachIndexed { i, it ->
+            android.util.Log.e("DINO", "output[$i] type=${it.value::class.java}")
+
+        }
+
+        // ✅ 3차원 출력
+        val logitsRaw3D = outputs[0].value as Array<Array<Array<FloatArray>>>
+        val boxesRaw3D  = outputs[1].value as Array<Array<Array<FloatArray>>>
+
+        // ✅ batch 0
+        val logitsRaw = logitsRaw3D[0]
+        val boxesRaw  = boxesRaw3D[0]
 
         val numQueries = 900
         val hiddenDim = 256
@@ -185,17 +193,19 @@ class GroundingDinoONNX(private val context: Context) {
         val logitsTensor = FloatArray(numQueries * hiddenDim)
         val boxesTensor = FloatArray(numQueries * 4)
 
-        // flatten
         for (i in 0 until numQueries) {
-            val logitsRow = logitsRaw[0][i]       // FloatArray[256]
+            val logitsRow = logitsRaw[i]
             System.arraycopy(logitsRow, 0, logitsTensor, i * hiddenDim, hiddenDim)
 
-            val boxRow = boxesRaw[0][i]           // FloatArray[4]
+            val boxRow = boxesRaw[i]
             System.arraycopy(boxRow, 0, boxesTensor, i * 4, 4)
         }
 
+        // ✅ ✅ ✅ 이게 없어서 지금 에러 난 것
         return Pair(logitsTensor, boxesTensor)
     }
+
+
 
     // ---------------------------------------------------------
     // 5. Postprocess: 가장 높은 스코어 한 개만
