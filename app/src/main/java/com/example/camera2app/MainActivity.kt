@@ -9,9 +9,7 @@ import android.os.*
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updateLayoutParams
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.lifecycleScope
 import com.example.camera2app.ai.RTMPoseEstimator
 import com.example.camera2app.ai.YoloXDetector
@@ -22,12 +20,7 @@ import com.example.camera2app.util.Permissions
 import kotlinx.coroutines.*
 import java.util.*
 import android.util.Log
-import androidx.core.view.doOnLayout
-
-
-
 import android.content.pm.PackageManager
-
 
 class MainActivity : AppCompatActivity() {
 
@@ -50,6 +43,12 @@ class MainActivity : AppCompatActivity() {
     // ✅ 로딩 오버레이
     private var loadingOverlay: View? = null
 
+    // ✅ EV 슬라이더 / 옵션바
+    private var tapEvSlider: View? = null
+    private lateinit var rootFrame: FrameLayout
+    private var isAllAuto = true
+    private var optionVisible = false
+
     companion object {
         private const val REQUEST_REFERENCE_IMAGE = 2001
     }
@@ -58,6 +57,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // 루트 뷰 (EV 슬라이더 붙일 곳)
+        rootFrame = findViewById(android.R.id.content)
+
+        // 기본 비율 텍스트
+        binding.btnRatio.text = "16:9"
 
         initAISystem()
         initButtons()
@@ -68,7 +73,6 @@ class MainActivity : AppCompatActivity() {
         // ✅ TextureView 준비되었을 때만 카메라 열기
         binding.textureView.surfaceTextureListener =
             object : TextureView.SurfaceTextureListener {
-
                 override fun onSurfaceTextureAvailable(
                     surface: SurfaceTexture,
                     width: Int,
@@ -90,14 +94,18 @@ class MainActivity : AppCompatActivity() {
                 override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
             }
 
+        // 실제 크기 잡힌 뒤 한 번 더 시도
         binding.textureView.doOnLayout {
             Log.e("CAMERA_FLOW", "✅ TextureView 실제 크기: ${it.width} x ${it.height}")
-            initCameraController()
+            if (!::controller.isInitialized) {
+                initCameraController()
+            }
         }
-
-
     }
 
+    // ----------------------------------------------------
+    // 권한 콜백
+    // ----------------------------------------------------
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -114,22 +122,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupTextureListener() {
-        binding.textureView.surfaceTextureListener =
-            object : TextureView.SurfaceTextureListener {
-                override fun onSurfaceTextureAvailable(surface: SurfaceTexture, w: Int, h: Int) {
-                    initCameraController()
-                }
-
-                override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, w: Int, h: Int) {}
-                override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean = true
-                override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
-            }
-    }
-
-
-
-    // ✅ AI 초기화 (YOLOX + RTMPose)
+    // ----------------------------------------------------
+    // AI 초기화 (YOLOX + RTMPose)
+    // ----------------------------------------------------
     private fun initAISystem() {
         Thread {
             try {
@@ -153,9 +148,10 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    // ✅ 카메라 컨트롤러
+    // ----------------------------------------------------
+    // 카메라 컨트롤러
+    // ----------------------------------------------------
     private fun initCameraController() {
-
         Log.e("CAMERA_FLOW", "✅ initCameraController() 진입")
 
         controller = Camera2Controller(
@@ -182,14 +178,35 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // ✅✅✅ 여기서 바로 카메라 시작 (핵심)
+        // ✅ 타이머 카운트다운 (3s / 10s)
+        controller.setTimerCountdownCallback { remaining ->
+            runOnUiThread {
+                if (remaining > 0) {
+                    binding.timerCountdownText.text = remaining.toString()
+                    binding.timerCountdownText.visibility = View.VISIBLE
+                    binding.timerCountdownText.scaleX = 1.5f
+                    binding.timerCountdownText.scaleY = 1.5f
+                    binding.timerCountdownText.alpha = 1f
+                    binding.timerCountdownText.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .alpha(0.8f)
+                        .setDuration(800)
+                        .start()
+                } else {
+                    binding.timerCountdownText.visibility = View.GONE
+                }
+            }
+        }
+
+        // ✅ 여기서 프리뷰 시작
         controller.onResume()
     }
 
-
-    // ✅ 촬영 → AI 분석
+    // ----------------------------------------------------
+    // 촬영 → AI 분석
+    // ----------------------------------------------------
     private fun processCapturedPhoto(bitmap: Bitmap, uri: Uri) {
-
         if (!isAIInitialized) {
             Toast.makeText(this, "AI 로딩 중...", Toast.LENGTH_SHORT).show()
             return
@@ -204,7 +221,7 @@ class MainActivity : AppCompatActivity() {
 
         Thread {
             try {
-                // ✅ 1. 사람 검출
+                // 1. 사람 검출
                 val bbox = yoloxDetector.detectPerson(bitmap)
                 val refBbox = yoloxDetector.detectPerson(referenceBitmap!!)
 
@@ -216,7 +233,7 @@ class MainActivity : AppCompatActivity() {
                     return@Thread
                 }
 
-                // ✅ 2. 포즈 추정
+                // 2. 포즈 추정
                 val pose1 = poseEstimator.estimatePose(bitmap, bbox)
                 val pose2 = poseEstimator.estimatePose(referenceBitmap!!, refBbox)
 
@@ -228,16 +245,17 @@ class MainActivity : AppCompatActivity() {
                     return@Thread
                 }
 
-                // ✅ 3. 유사도 점수
+                // 3. 유사도 점수
                 val score = calculatePoseSimilarity(pose1, pose2)
                 val msg = generateFeedbackMessage(score)
 
                 runOnUiThread {
                     hideLoadingOverlay()
 
-                    val intent = Intent(this,
-                        com.example.camera2app.gallery.FeedbackScoreActivity::class.java).apply {
-
+                    val intent = Intent(
+                        this,
+                        com.example.camera2app.gallery.FeedbackScoreActivity::class.java
+                    ).apply {
                         putExtra(
                             com.example.camera2app.gallery.FeedbackScoreActivity.EXTRA_CAPTURED_URI,
                             uri.toString()
@@ -269,7 +287,6 @@ class MainActivity : AppCompatActivity() {
         p1: List<Pair<PointF, Float>>,
         p2: List<Pair<PointF, Float>>
     ): Float {
-
         val minSize = minOf(p1.size, p2.size)
         if (minSize == 0) return 0f
 
@@ -304,19 +321,65 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ✅ 버튼들
+    // ----------------------------------------------------
+    // 버튼들 (UI 전체)
+    // ----------------------------------------------------
     private fun initButtons() {
-
+        // 촬영 버튼 (타이머 포함)
         binding.btnShutter.setOnClickListener {
             controller.takePictureWithTimer()
         }
 
+        // 옵션바 열기 / 닫기
+        binding.btnOptions.setOnClickListener { toggleOptionBar() }
+        binding.btnCloseOption.setOnClickListener { toggleOptionBar() }
+
+        // 플래시
+        binding.btnFlash.setOnClickListener {
+            val next = when (controller.getFlashMode()) {
+                Camera2Controller.FlashMode.OFF -> Camera2Controller.FlashMode.AUTO
+                Camera2Controller.FlashMode.AUTO -> Camera2Controller.FlashMode.ON
+                Camera2Controller.FlashMode.ON -> Camera2Controller.FlashMode.OFF
+            }
+            controller.setFlashMode(next)
+
+            binding.btnFlash.setImageResource(
+                when (next) {
+                    Camera2Controller.FlashMode.OFF -> R.drawable.ic_flash_off
+                    Camera2Controller.FlashMode.AUTO -> R.drawable.ic_flash_auto
+                    Camera2Controller.FlashMode.ON -> R.drawable.ic_flash
+                }
+            )
+        }
+
+        // EV 슬라이더 버튼
+        binding.btnExp.setOnClickListener {
+            showTapEvSliderCenter()
+        }
+
+        // 타이머
+        binding.btnTimer.setOnClickListener {
+            toggleTimer()
+        }
+
+        // 비율 변경
+        binding.btnRatio.setOnClickListener {
+            toggleAspectRatio()
+        }
+
+        // 카메라 전/후면 전환
+        binding.btnSwitch.setOnClickListener {
+            controller.switchCamera()
+        }
+
+        // 레퍼런스 선택
         binding.menuReference.setOnClickListener {
             val intent =
                 Intent(this, com.example.camera2app.reference.ReferenceActivity::class.java)
             startActivityForResult(intent, REQUEST_REFERENCE_IMAGE)
         }
 
+        // 마지막 썸네일 → 분석
         binding.lastThumbnail.setOnClickListener {
             val bmp = lastCapturedBitmap
             val uri = lastCapturedUri
@@ -325,12 +388,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // 갤러리
         binding.menuGallery.setOnClickListener {
             startActivity(Intent(this, GalleryActivity::class.java))
         }
     }
 
-    // ✅ 레퍼런스 선택 결과
+    // ----------------------------------------------------
+    // 레퍼런스 처리
+    // ----------------------------------------------------
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
@@ -342,7 +408,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ✅ Bitmap 로딩
+    // Bitmap 로딩
     private fun uriToBitmap(uri: Uri): Bitmap? {
         return try {
             if (Build.VERSION.SDK_INT >= 28) {
@@ -357,7 +423,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ✅ 로딩 오버레이
+    // ----------------------------------------------------
+    // 로딩 오버레이
+    // ----------------------------------------------------
     private fun showLoadingOverlay() {
         if (loadingOverlay != null) return
         loadingOverlay = layoutInflater.inflate(R.layout.loading_overlay, null)
@@ -371,7 +439,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ✅ 권한
+    // ----------------------------------------------------
+    // 권한
+    // ----------------------------------------------------
     private fun requestPermissionsIfNeeded() {
         val needs = mutableListOf(Manifest.permission.CAMERA)
         if (Build.VERSION.SDK_INT >= 33) {
@@ -382,25 +452,231 @@ class MainActivity : AppCompatActivity() {
         Permissions.requestIfNeeded(this, needs.toTypedArray())
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        lastCapturedBitmap?.recycle()
-        lastCapturedBitmap = null
+    // ----------------------------------------------------
+    // EV 슬라이더 / 옵션바 / 타이머 / 비율
+    // ----------------------------------------------------
+    private fun dp(i: Int) = (resources.displayMetrics.density * i + 0.5f).toInt()
+
+    private fun toggleOptionBar() {
+        optionVisible = !optionVisible
+
+        if (optionVisible) {
+            binding.btnOptions.visibility = View.GONE
+            binding.optionBar.visibility = View.VISIBLE
+            animateOptionBar(show = true)
+        } else {
+            animateOptionBar(show = false)
+        }
     }
 
+    private fun animateOptionBar(show: Boolean) {
+        val view = binding.optionBar
+        if (show) {
+            view.alpha = 0f
+            view.translationY = 40f
+            view.visibility = View.VISIBLE
+            view.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(200)
+                .start()
+        } else {
+            view.animate()
+                .alpha(0f)
+                .translationY(40f)
+                .setDuration(200)
+                .withEndAction {
+                    view.visibility = View.GONE
+                    binding.btnOptions.visibility = View.VISIBLE
+                }
+                .start()
+        }
+    }
+
+    // 중앙에 EV 슬라이더 표시
+    private fun showTapEvSliderCenter() {
+        if (tapEvSlider != null) {
+            rootFrame.removeView(tapEvSlider)
+            tapEvSlider = null
+            isAllAuto = true
+            controller.applyEv(0.0)   // 다시 0으로
+            return
+        }
+
+        isAllAuto = false
+        tapEvSlider = createTapEvSlider()
+        rootFrame.addView(tapEvSlider)
+        tapEvSlider?.bringToFront()
+    }
+
+    // 실제 슬라이더 View 생성
+    private fun createTapEvSlider(): View {
+        val container = FrameLayout(this)
+
+        val sliderHeight = dp(280)
+        val lineWidth = dp(3)
+        val iconSize = dp(32)
+        val containerWidth = dp(50)
+
+        val padding = dp(16)
+        val trackHeight = sliderHeight - iconSize - (padding * 2)
+        val iconGap = dp(8)
+
+        val topLine = View(this).apply {
+            setBackgroundColor(0xFFFFFFFF.toInt())
+        }
+        val topLineLp = FrameLayout.LayoutParams(lineWidth, 0).apply {
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
+            topMargin = padding
+        }
+        container.addView(topLine, topLineLp)
+
+        val bottomLine = View(this).apply {
+            setBackgroundColor(0xFFFFFFFF.toInt())
+        }
+        val bottomLineLp = FrameLayout.LayoutParams(lineWidth, 0).apply {
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+            bottomMargin = padding
+        }
+        container.addView(bottomLine, bottomLineLp)
+
+        val sunIcon = ImageView(this).apply {
+            setImageResource(R.drawable.clear_day)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            elevation = dp(4).toFloat()
+        }
+        val sunLp = FrameLayout.LayoutParams(iconSize, iconSize).apply {
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
+            topMargin = padding + (trackHeight / 2)
+        }
+        container.addView(sunIcon, sunLp)
+
+        fun updateLines(iconTopMargin: Int) {
+            val topLineHeight = iconTopMargin - padding - iconGap
+            topLineLp.height = maxOf(0, topLineHeight)
+            topLine.layoutParams = topLineLp
+
+            val iconBottom = iconTopMargin + iconSize + iconGap
+            val bottomLineHeight = sliderHeight - padding - iconBottom
+            bottomLineLp.height = maxOf(0, bottomLineHeight)
+            bottomLine.layoutParams = bottomLineLp
+        }
+
+        updateLines(sunLp.topMargin)
+
+        val seek = SeekBar(this).apply {
+            max = 800
+            progress = 400
+            rotation = -90f
+            thumb = null
+            progressDrawable = null
+            background = null
+        }
+
+        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                val ev = (p - 400) / 100.0
+                controller.applyEv(ev)
+
+                val ratio = 1f - (p / 800f)
+                val newTopMargin = padding + (trackHeight * ratio).toInt()
+                sunLp.topMargin = newTopMargin
+                sunIcon.layoutParams = sunLp
+
+                updateLines(newTopMargin)
+            }
+
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+
+        val seekLp = FrameLayout.LayoutParams(sliderHeight, containerWidth).apply {
+            gravity = Gravity.CENTER
+        }
+        container.addView(seek, seekLp)
+
+        val lp = FrameLayout.LayoutParams(containerWidth, sliderHeight).apply {
+            gravity = Gravity.END
+            rightMargin = dp(16)
+            val screenHeight = binding.previewContainer.height
+            topMargin = (screenHeight - sliderHeight) / 2
+        }
+
+        container.layoutParams = lp
+        container.isClickable = true
+        container.isFocusable = true
+
+        return container
+    }
+
+    // 타이머 모드
+    private fun toggleTimer() {
+        val mode = controller.cycleTimerMode()
+        updateTimerIcon(mode)
+    }
+
+    private fun updateTimerIcon(mode: Camera2Controller.TimerMode) {
+        val iconRes = when (mode) {
+            Camera2Controller.TimerMode.OFF -> R.drawable.btn_timer
+            Camera2Controller.TimerMode.SEC_3 -> R.drawable.ic_time_3s
+            Camera2Controller.TimerMode.SEC_10 -> R.drawable.ic_time_10s
+        }
+        binding.btnTimer.setImageResource(iconRes)
+    }
+
+    // 비율 변경 + 블러 효과
+    private fun setPreviewBlur(enabled: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (enabled) {
+                binding.textureView.setRenderEffect(
+                    RenderEffect.createBlurEffect(
+                        100f, 100f,
+                        Shader.TileMode.CLAMP
+                    )
+                )
+            } else {
+                binding.textureView.setRenderEffect(null)
+            }
+        } else {
+            binding.textureView.alpha = if (enabled) 0.3f else 1f
+        }
+    }
+
+    private fun toggleAspectRatio() {
+        setPreviewBlur(true)
+
+        val next = when (binding.btnRatio.text) {
+            "1:1" -> "4:3"
+            "4:3" -> "16:9"
+            else -> "1:1"
+        }
+        binding.btnRatio.text = next
+        controller.setAspectRatio(next)
+
+        binding.textureView.postDelayed({
+            setPreviewBlur(false)
+        }, 300L)
+    }
+
+    // ----------------------------------------------------
+    // 라이프사이클
+    // ----------------------------------------------------
     override fun onResume() {
         super.onResume()
-        // ❌ 여기서 controller 건드리지 마
+        // 🔥 여기서는 controller 건드리지 않음 (프리뷰 흐름 그대로 유지)
     }
-
-
 
     override fun onPause() {
         if (::controller.isInitialized) {
+            controller.cancelTimer()
             controller.onPause()
         }
         super.onPause()
     }
 
-
+    override fun onDestroy() {
+        super.onDestroy()
+        lastCapturedBitmap?.recycle()
+        lastCapturedBitmap = null
+    }
 }
