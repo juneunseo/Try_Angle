@@ -1,6 +1,8 @@
 package com.example.camera2app.gallery
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -20,17 +22,6 @@ import com.example.camera2app.R
 import com.example.camera2app.databinding.ActivityPreviewBinding
 import com.example.camera2app.reference.LikeManager
 
-
-import android.graphics.Bitmap
-import android.graphics.ImageDecoder
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
-
-import com.example.camera2app.ai.RealtimeAnalyzer
-import com.example.camera2app.ai.PoseEstimationService
-
-
-
 class PreviewActivity : ComponentActivity() {
 
     companion object {
@@ -47,28 +38,19 @@ class PreviewActivity : ComponentActivity() {
         get() = if (photoList.isNotEmpty() && currentPosition in photoList.indices)
             photoList[currentPosition] else null
 
-    private lateinit var realtimeAnalyzer: RealtimeAnalyzer
-    private lateinit var poseEstimationService: PoseEstimationService
-
-
     override fun onCreate(savedInstanceState: Bundle?) {
-
-        poseEstimationService = PoseEstimationService(this)
-        poseEstimationService.initialize()
-
-        realtimeAnalyzer = RealtimeAnalyzer(poseEstimationService)
-
         super.onCreate(savedInstanceState)
+
         binding = ActivityPreviewBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         LikeManager.init(this)
 
-        // ★ 공유 홀더에서 사진 목록 가져오기
+        // ✅ 공유 홀더에서 사진 목록 가져오기
         photoList = PhotoListHolder.photos.toMutableList()
         currentPosition = intent.getIntExtra(EXTRA_POSITION, 0)
 
-        // 단일 사진 (이전 방식 호환)
+        // ✅ 단일 사진 호환
         if (photoList.isEmpty()) {
             val singleUri = intent.getStringExtra(EXTRA_IMAGE_URI)
             singleUri?.let { photoList.add(Uri.parse(it)) }
@@ -84,54 +66,50 @@ class PreviewActivity : ComponentActivity() {
         setupButtons()
     }
 
+    // -------------------------------
+    // ✅ ViewPager
+    // -------------------------------
     private fun setupViewPager() {
         binding.viewPager.adapter = PhotoPagerAdapter(photoList)
         binding.viewPager.setCurrentItem(currentPosition, false)
 
-        binding.viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                currentPosition = position
-                updateFavoriteIcon()
+        binding.viewPager.registerOnPageChangeCallback(
+            object : ViewPager2.OnPageChangeCallback() {
+                override fun onPageSelected(position: Int) {
+                    currentPosition = position
+                    updateFavoriteIcon()
+                }
             }
-        })
+        )
 
         updateFavoriteIcon()
     }
 
+    // -------------------------------
+    // ✅ 버튼들
+    // -------------------------------
     private fun setupButtons() {
+
         binding.btnBack.setOnClickListener {
             onBackPressedDispatcher.onBackPressed()
         }
 
         binding.btnInfo.setOnClickListener {
-            currentUri?.let { uri ->
-                val bitmap = loadBitmap(uri) // 갤러리 사진 Bitmap 로드
-
-                lifecycleScope.launch {
-                    val result = realtimeAnalyzer.analyzeSingleImage(bitmap)
-
-                    val intent = Intent(this@PreviewActivity, FeedbackActivity::class.java)
-                    intent.putExtra(FeedbackActivity.EXTRA_IMAGE_URI, uri.toString())
-                    intent.putExtra(FeedbackActivity.EXTRA_SCORE, result.score)
-                    intent.putExtra(FeedbackActivity.EXTRA_FEEDBACK_MESSAGE, result.message)
-
-                    // category feedback 전달
-                    intent.putExtra("cat_pose", result.categoryFeedbacks["pose"])
-                    intent.putExtra("cat_comp", result.categoryFeedbacks["composition"])
-                    intent.putExtra("cat_view", result.categoryFeedbacks["viewpoint"])
-                    intent.putExtra("cat_mood", result.categoryFeedbacks["mood"])
-
-                    startActivity(intent)
-                }
-            }
+            Toast.makeText(
+                this,
+                "ℹ 현재 Preview 화면에서는 AI 분석이 비활성화 되어 있습니다.",
+                Toast.LENGTH_SHORT
+            ).show()
         }
-
 
         binding.btnShare.setOnClickListener { sharePhoto() }
         binding.btnFavorite.setOnClickListener { toggleFavorite() }
         binding.btnDelete.setOnClickListener { confirmAndDeletePhoto() }
     }
 
+    // -------------------------------
+    // ✅ ViewPager Adapter
+    // -------------------------------
     inner class PhotoPagerAdapter(private val photos: List<Uri>) :
         RecyclerView.Adapter<PhotoPagerAdapter.PhotoViewHolder>() {
 
@@ -154,6 +132,9 @@ class PreviewActivity : ComponentActivity() {
         override fun getItemCount() = photos.size
     }
 
+    // -------------------------------
+    // ✅ Bitmap 로드
+    // -------------------------------
     private fun loadBitmap(uri: Uri): Bitmap {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val source = ImageDecoder.createSource(contentResolver, uri)
@@ -163,7 +144,9 @@ class PreviewActivity : ComponentActivity() {
         }
     }
 
-
+    // -------------------------------
+    // ✅ 공유
+    // -------------------------------
     private fun sharePhoto() {
         if (currentUri == null) {
             Toast.makeText(this, "공유할 사진이 없습니다", Toast.LENGTH_SHORT).show()
@@ -184,6 +167,9 @@ class PreviewActivity : ComponentActivity() {
         }
     }
 
+    // -------------------------------
+    // ✅ 즐겨찾기
+    // -------------------------------
     private fun toggleFavorite() {
         if (currentUri == null) return
 
@@ -191,9 +177,11 @@ class PreviewActivity : ComponentActivity() {
             val uriString = currentUri.toString()
             val isNowLiked = LikeManager.toggleLike(uriString)
 
-            val message = if (isNowLiked) "레퍼런스에 추가되었습니다" else "레퍼런스에서 제거되었습니다"
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            val message =
+                if (isNowLiked) "레퍼런스에 추가되었습니다"
+                else "레퍼런스에서 제거되었습니다"
 
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             updateFavoriteIcon()
         } catch (e: Exception) {
             Toast.makeText(this, "처리 실패: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -206,10 +194,14 @@ class PreviewActivity : ComponentActivity() {
 
         val isLiked = LikeManager.isLiked(currentUri.toString())
         binding.btnFavorite.setImageResource(
-            if (isLiked) R.drawable.ic_heart_filled else R.drawable.ic_heart_empty
+            if (isLiked) R.drawable.ic_heart_filled
+            else R.drawable.ic_heart_empty
         )
     }
 
+    // -------------------------------
+    // ✅ 삭제
+    // -------------------------------
     private fun confirmAndDeletePhoto() {
         if (currentUri == null) {
             Toast.makeText(this, "삭제할 사진이 없습니다", Toast.LENGTH_SHORT).show()
@@ -238,10 +230,16 @@ class PreviewActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && currentUri != null) {
             try {
                 val pendingIntent = MediaStore.createDeleteRequest(
-                    contentResolver, listOf(currentUri!!)
+                    contentResolver,
+                    listOf(currentUri!!)
                 )
                 startIntentSenderForResult(
-                    pendingIntent.intentSender, DELETE_REQUEST_CODE, null, 0, 0, 0
+                    pendingIntent.intentSender,
+                    DELETE_REQUEST_CODE,
+                    null,
+                    0,
+                    0,
+                    0
                 )
             } catch (e: Exception) {
                 Toast.makeText(this, "삭제 실패: ${e.message}", Toast.LENGTH_SHORT).show()

@@ -53,6 +53,7 @@ dependencies {
     kapt ("com.github.bumptech.glide:compiler:4.16.0")
 
     // ONNX Runtime for Android
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.3")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
 
 }

@@ -1,4 +1,6 @@
 package com.example.camera2app.camera
+import com.example.camera2app.ai.RTMPoseRunner
+
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -130,6 +132,9 @@ class Camera2Controller(
     // ★ Preview는 고정, Capture는 선택
     private var captureSize: Size = Size(4000, 3000) // 기본 12M
 
+    private val poseRunner = RTMPoseRunner(context)
+
+
 
     // ⭐ 조도 센서 관련 변수 추가
     private val lightSensor by lazy {
@@ -156,28 +161,40 @@ class Camera2Controller(
         ImageReader.OnImageAvailableListener { reader ->
             val img = reader.acquireNextImage() ?: return@OnImageAvailableListener
 
-            val buf = img.planes[0].buffer
-            val bytes = ByteArray(buf.remaining()).apply { buf.get(this) }
+            val buffer = img.planes[0].buffer
+            val bytes = ByteArray(buffer.remaining())
+            buffer.get(bytes)
             img.close()
 
-            // 1) JPEG → Bitmap 로드
+            // JPEG → Bitmap
             val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
 
-            // 2) 회전 + 전면이면 미러링 적용
+            // 회전 & 미러 적용
             val isFront = lensFacing == CameraCharacteristics.LENS_FACING_FRONT
             val rotated = transformBitmap(bmp, lastJpegOrientation, mirror = isFront)
 
-            // 3) 현재 화면비(aspectMode)에 맞춰 중앙 크롭
+            // 화면 비율 크롭
             val cropped = cropToAspect(rotated, aspectMode)
 
-            // 4) 크롭된 걸 JPEG로 압축
-            val out = ByteArrayOutputStream()
-            cropped.compress(Bitmap.CompressFormat.JPEG, 95, out)
-            val finalBytes = out.toByteArray()
+            // -------------- 🔥 포즈 추론 시작 --------------
+            try {
+                val poseResult = poseRunner.detect(cropped)
 
-            // 5) 저장 콜백
-            onSaved(saveJpeg(finalBytes))
+                poseResult?.let {
+                    overlayView.updatePose(
+                        kps = it.keypoints,
+                        box = it.boundingBox
+                    )
+
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Log.e("PoseAI", "Pose detection failed: ${e.message}")
+            }
         }
+
+
 
 
 
@@ -218,8 +235,11 @@ class Camera2Controller(
 
         when (flashMode) {
             FlashMode.OFF, FlashMode.AUTO -> {
-                // ⭐ OFF와 AUTO는 프리뷰에서 플래시 끄기
-                builder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
+                builder.set(
+                    CaptureRequest.CONTROL_AE_MODE,
+                    CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH
+                )
+
             }
 
             FlashMode.ON -> {
@@ -394,8 +414,11 @@ class Camera2Controller(
     // =========================================================================================
     // Surface listener
     // =========================================================================================
+
+
     private val surfaceListener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
+            Log.e("CAMERA_FLOW", "✅ onSurfaceTextureAvailable 호출됨")
             openCamera(w, h)
         }
 
@@ -426,6 +449,7 @@ class Camera2Controller(
     @SuppressLint("MissingPermission")
     private fun openCamera(w: Int, h: Int) {
 
+        Log.e("CAMERA_FLOW", "✅ openCamera() 호출됨")
 
         if (isFrontCamera()) {
             val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
@@ -691,13 +715,14 @@ class Camera2Controller(
             }
 
             // ⭐ 플래시만 필요할 때만 ON
-            if (flashAvailable()) {
-                if (useFlash) {
-                    set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH)  // ✅ TORCH!
-                } else {
-                    set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
-                }
+            if (useFlash) {
+                set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+                set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_SINGLE)
+            } else {
+                set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
             }
+
+
 
             // 기본 설정
             set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
