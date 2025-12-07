@@ -154,56 +154,44 @@ class GroundingDinoONNX(private val context: Context) {
         )
 
         val mask = LongArray(inputSize * inputSize) { 1L }
-        val maskBuffer = LongBuffer.wrap(mask)
-
         val pixelMask = OnnxTensor.createTensor(
             envLocal,
-            maskBuffer,
+            LongBuffer.wrap(mask),
             longArrayOf(1, inputSize.toLong(), inputSize.toLong())
         )
 
         val textInputs = createTextInputs()
 
-        val inputs = HashMap<String, OnnxTensor>().apply {
-            put("images", pixelValues)
-            put("masks", pixelMask)
-            putAll(textInputs)
-        }
+        val inputs = hashMapOf(
+            "pixel_values" to pixelValues,
+            "pixel_mask" to pixelMask,
+            "input_ids" to textInputs["input_ids"]!!,
+            "attention_mask" to textInputs["attention_mask"]!!,
+            "token_type_ids" to textInputs["token_type_ids"]!!
+        )
 
         val outputs = sess.run(inputs)
 
-        android.util.Log.e("DINO", "outputs.size = ${outputs.size()}")
+        android.util.Log.e("DINO", "outputs.size=${outputs.size()}")
 
-        outputs.forEachIndexed { i, it ->
-            android.util.Log.e("DINO", "output[$i] type=${it.value::class.java}")
+        val logitsRaw = outputs[0].value as Array<Array<FloatArray>>   // [1][900][1]
+        val boxesRaw  = outputs[1].value as Array<Array<FloatArray>>   // [1][900][4]
 
+        val logitsTensor = FloatArray(900)
+        val boxesTensor  = FloatArray(900 * 4)
+
+        for (i in 0 until 900) {
+            logitsTensor[i] = logitsRaw[0][i][0]
+
+            System.arraycopy(
+                boxesRaw[0][i], 0,
+                boxesTensor, i * 4, 4
+            )
         }
 
-        // ✅ 3차원 출력
-        val logitsRaw3D = outputs[0].value as Array<Array<Array<FloatArray>>>
-        val boxesRaw3D  = outputs[1].value as Array<Array<Array<FloatArray>>>
-
-        // ✅ batch 0
-        val logitsRaw = logitsRaw3D[0]
-        val boxesRaw  = boxesRaw3D[0]
-
-        val numQueries = 900
-        val hiddenDim = 256
-
-        val logitsTensor = FloatArray(numQueries * hiddenDim)
-        val boxesTensor = FloatArray(numQueries * 4)
-
-        for (i in 0 until numQueries) {
-            val logitsRow = logitsRaw[i]
-            System.arraycopy(logitsRow, 0, logitsTensor, i * hiddenDim, hiddenDim)
-
-            val boxRow = boxesRaw[i]
-            System.arraycopy(boxRow, 0, boxesTensor, i * 4, 4)
-        }
-
-        // ✅ ✅ ✅ 이게 없어서 지금 에러 난 것
         return Pair(logitsTensor, boxesTensor)
     }
+
 
 
 
@@ -216,23 +204,19 @@ class GroundingDinoONNX(private val context: Context) {
         scoreThreshold: Float = 0.5f
     ): RectF? {
 
-        val numQueries = 900
-        val hiddenDim = 256
-
         var bestScore = scoreThreshold
         var bestBox: RectF? = null
 
-        for (i in 0 until numQueries) {
-            // logits[i][0] (person score)
-            val score = 1f / (1f + exp(-logitsTensor[i * hiddenDim]))
+        for (i in 0 until 900) {
+            val score = 1f / (1f + exp(-logitsTensor[i]))
 
             if (score > bestScore) {
                 bestScore = score
 
-                val cx = boxesTensor[i * 4 + 0]
+                val cx = boxesTensor[i * 4]
                 val cy = boxesTensor[i * 4 + 1]
-                val w = boxesTensor[i * 4 + 2]
-                val h = boxesTensor[i * 4 + 3]
+                val w  = boxesTensor[i * 4 + 2]
+                val h  = boxesTensor[i * 4 + 3]
 
                 val x = cx - w / 2f
                 val y = cy - h / 2f
@@ -243,6 +227,7 @@ class GroundingDinoONNX(private val context: Context) {
 
         return bestBox
     }
+
 
     // ---------------------------------------------------------
     // 6. Postprocess: 여러 개 + NMS
