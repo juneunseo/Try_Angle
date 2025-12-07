@@ -400,43 +400,26 @@ class MainActivity : AppCompatActivity() {
 
         showLoadingOverlay()
 
-        tryAngleAnalyzer.analyzeFrame(bitmap) { feedback ->
+        tryAngleAnalyzer.analyzeFrameWithReference(
+            image = bitmap,
+            referenceImage = referenceBitmap!!
+        ) { feedback ->
 
             runOnUiThread {
                 hideLoadingOverlay()
+                val score = feedback.compressionInfo?.index ?: 1f
 
-                val intent = Intent(
-                    this,
-                    FeedbackScoreActivity::class.java
-                ).apply {
-
-                    putExtra(
-                        FeedbackScoreActivity.EXTRA_CAPTURED_URI,
-                        uri.toString()
-                    )
-
-                    putExtra(
-                        FeedbackScoreActivity.EXTRA_REFERENCE_URI,
-                        referenceUri?.toString()
-                    )
-
-                    // ✅ v1.5 점수 → perfectScore로 사용
-                    val score = (feedback.compressionInfo?.index ?: 0.5f) * 10f
-                    putExtra(
-                        FeedbackScoreActivity.EXTRA_SCORE,
-                        score
-                    )
-
-                    // ✅ v1.5 핵심 메시지
-                    putExtra(
-                        FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
-                        feedback.primary
-                    )
+                val intent = Intent(this, FeedbackScoreActivity::class.java).apply {
+                    putExtra(FeedbackScoreActivity.EXTRA_CAPTURED_URI, uri.toString())
+                    putExtra(FeedbackScoreActivity.EXTRA_REFERENCE_URI, referenceUri?.toString())
+                    putExtra(FeedbackScoreActivity.EXTRA_SCORE, score)
+                    putExtra(FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE, feedback.primary)
                 }
 
                 startActivity(intent)
             }
         }
+
     }
 
 

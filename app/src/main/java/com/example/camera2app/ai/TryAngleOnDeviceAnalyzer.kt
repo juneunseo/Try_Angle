@@ -4,9 +4,17 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.RectF
 import android.os.SystemClock
+import android.util.Log
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 
+/**
+ * TryAngle v1.5 온디바이스 프레임 분석기
+ * - RTMPose
+ * - DepthEstimator
+ * - (옵션) Grounding DINO
+ * - OnDeviceFeedbackGenerator 연결
+ */
 class TryAngleOnDeviceAnalyzer(
     private val context: Context,
     private val enableLegacySystem: Boolean = false
@@ -33,13 +41,16 @@ class TryAngleOnDeviceAnalyzer(
     private val executor = Executors.newFixedThreadPool(3)
 
     init {
-        android.util.Log.d("TryAngle", "✅ TryAngle On-Device Analyzer Initialized")
+        Log.d("TryAngle", "✅ TryAngle On-Device Analyzer Initialized")
     }
 
     // =========================================
     // ✅ 메인 프레임 분석
     // =========================================
-    fun analyzeFrame(image: Bitmap, callback: (TryAngleFeedback) -> Unit) {
+    fun analyzeFrame(
+        image: Bitmap,
+        callback: (TryAngleFeedback) -> Unit
+    ) {
 
         val startTime = SystemClock.elapsedRealtime()
 
@@ -53,29 +64,44 @@ class TryAngleOnDeviceAnalyzer(
 
         // 1️⃣ RTMPose
         executor.execute {
-            poseResult = rtmposeRunner.detect(image)
-            latch.countDown()
+            try {
+                poseResult = rtmposeRunner.detect(image)
+            } catch (e: Exception) {
+                Log.e("TryAngle", "❌ RTMPose detect failed", e)
+            } finally {
+                latch.countDown()
+            }
         }
 
         // 2️⃣ Depth
         executor.execute {
-            depthResult =
-                poseResult?.boundingBox?.let { faceRect ->
-                    depthEstimator.estimateDistance(
-                        faceRect = faceRect,
-                        imageWidth = image.width,
-                        zoomFactor = 1.0f
-                    )
-                }
-            latch.countDown()
+            try {
+                depthResult =
+                    poseResult?.boundingBox?.let { faceRect ->
+                        depthEstimator.estimateDistance(
+                            faceRect = faceRect,
+                            imageWidth = image.width,
+                            zoomFactor = 1.0f
+                        )
+                    }
+            } catch (e: Exception) {
+                Log.e("TryAngle", "❌ Depth estimate failed", e)
+            } finally {
+                latch.countDown()
+            }
         }
 
         // 3️⃣ Grounding DINO (Legacy)
         groundingDino?.let { dino ->
             executor.execute {
-                // ✅ detectPerson ❌ → detectOne ✅
-                legacyBBox = dino.detectOne(image)
-                latch.countDown()
+                try {
+                    // ✅ detectPerson ❌ → detectOne ✅
+                    legacyBBox = dino.detectOne(image)
+                } catch (e: Exception) {
+                    Log.e("TryAngle", "❌ DINO detect failed", e)
+                } finally {
+                    latch.countDown()
+                }
             }
         }
 
@@ -121,7 +147,87 @@ class TryAngleOnDeviceAnalyzer(
         )
     }
 
+    // =========================================
+    // ✅ 성능 통계 반환
+    // =========================================
     fun getPerformanceStats(): PerformanceStats {
         return performanceStats
     }
+
+    /**
+     * v1.6 — reference 포함 분석
+     */
+    fun analyzeFrameWithReference(
+        image: Bitmap,
+        referenceImage: Bitmap,
+        callback: (TryAngleFeedback) -> Unit
+    ) {
+        Log.e("TryAngleFlow", "✅ analyzeFrameWithReference() 진입")
+
+        executor.execute {
+
+            val startTime = SystemClock.elapsedRealtime()
+
+            val pose = rtmposeRunner.detect(image)
+
+            val legacyBBox = groundingDino?.detectOne(image)
+
+            val processingTime =
+                (SystemClock.elapsedRealtime() - startTime) / 1000.0
+
+            Log.e("TryAngleFlow", "✅ pose = ${pose != null}")
+            Log.e("TryAngleFlow", "✅ legacyBBox = ${legacyBBox != null}")
+
+            val feedback = feedbackGenerator.generateFeedback(
+                pose = pose,
+                legacyBBox = legacyBBox,
+                image = image,
+                processingTime = processingTime
+            )
+
+            Log.e("TryAngleFlow", "✅ feedback.score = ${feedback.compressionInfo?.index}")
+
+            callback(feedback)
+        }
+    }
+
+
+    /**
+     * v1.6 — 포즈 유사도 계산기 (코사인 기반)
+     */
+    private fun calculatePoseSimilarityV16(
+        p1: PoseResult,
+        p2: PoseResult
+    ): Float {
+
+        val list1 = p1.keypoints
+        val list2 = p2.keypoints
+
+        val min = minOf(list1.size, list2.size)
+        if (min == 0) return 1f
+
+        var sum = 0f
+        var count = 0
+
+        for (i in 0 until min) {
+            val kp1 = list1[i]
+            val kp2 = list2[i]
+
+            if (kp1.second < 0.5f || kp2.second < 0.5f) continue
+
+            val dx = kp1.first.x - kp2.first.x
+            val dy = kp1.first.y - kp2.first.y
+            sum += kotlin.math.sqrt(dx*dx + dy*dy)
+
+            count++
+        }
+
+        if (count == 0) return 1f
+
+        val avg = sum / count
+        val normalized = (avg / 300f).coerceIn(0f, 1f)
+
+        return ((1f - normalized) * 10f).coerceIn(1f, 10f)
+    }
+
 }
