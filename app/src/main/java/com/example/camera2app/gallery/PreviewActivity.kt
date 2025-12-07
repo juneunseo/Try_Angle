@@ -284,16 +284,6 @@ class PreviewActivity : ComponentActivity() {
         }
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
 
-        if (requestCode == DELETE_REQUEST_CODE) {
-            if (resultCode == RESULT_OK) {
-                removeCurrentPhoto()
-            } else {
-                Toast.makeText(this, "삭제가 취소되었습니다", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
+
 }

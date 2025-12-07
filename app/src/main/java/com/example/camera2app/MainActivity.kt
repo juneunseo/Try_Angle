@@ -50,6 +50,9 @@ class MainActivity : AppCompatActivity() {
     private var referenceUri: Uri? = null
     private var referenceBitmap: Bitmap? = null
 
+    private var isReferenceMode = false
+
+
 
     companion object {
         private const val REQUEST_REFERENCE_IMAGE = 2001
@@ -95,6 +98,15 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
             }
+
+
+        // ✅ 앱 최초 실행 시 → 피드백 UI 전부 숨김
+        binding.feedbackMessageContainer.visibility = View.GONE
+        binding.feedbackStatusContainer.visibility = View.GONE
+        isReferenceMode = false
+
+
+
 
 
     }
@@ -217,12 +229,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-// ✅ 그래도 없으면 막는다
+        // ✅ 그래도 없으면 막는다
         if (referenceBitmap == null) {
             Toast.makeText(this, "레퍼런스를 먼저 설정하세요", Toast.LENGTH_SHORT).show()
             return
         }
-
 
         showLoadingOverlay()
 
@@ -236,6 +247,25 @@ class MainActivity : AppCompatActivity() {
                 var finalMessage = "사람 인식 실패"
 
                 if (bbox != null && refBbox != null) {
+
+                    // ✅ ✅ ✅ [성공 분기] → 사람 잡힘 → 안내 메시지 숨김
+                    runOnUiThread {
+                        if (isReferenceMode) {
+                            binding.feedbackMessageContainer.visibility = View.GONE
+                            binding.feedbackStatusContainer.visibility = View.VISIBLE
+
+                            binding.iconPose.setImageResource(R.drawable.ic_select_checked)
+                            binding.iconPosition.setImageResource(R.drawable.ic_select_checked)
+                            binding.iconAngle.setImageResource(R.drawable.ic_select_checked)
+                            binding.iconComposition.setImageResource(R.drawable.ic_select_checked)
+
+                            binding.iconFraming.setImageResource(R.drawable.ic_select_empty)
+                            binding.iconGaze.setImageResource(R.drawable.ic_select_empty)
+                        }
+
+                    }
+
+
                     val pose1 = poseEstimator.estimatePose(bitmap, bbox)
                     val pose2 = poseEstimator.estimatePose(referenceBitmap!!, refBbox)
 
@@ -245,10 +275,36 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         finalScore = 0f
                         finalMessage = "포즈 추정 실패"
+
+                        // ✅ ✅ ✅ [포즈 실패 분기] → 메시지 다시 표시
+                        runOnUiThread {
+                            binding.feedbackMessageContainer.visibility = View.VISIBLE
+                            binding.feedbackMessage.text = "포즈를 인식할 수 없습니다"
+                        }
                     }
+
                 } else {
                     finalScore = 0f
                     finalMessage = "사람 인식 실패"
+
+                    // ✅ ✅ ✅ [사람 인식 실패 분기] → 메시지 다시 표시
+                    runOnUiThread {
+                        if (isReferenceMode) {
+                            binding.feedbackMessageContainer.visibility = View.VISIBLE
+                            binding.feedbackMessage.text = "얼굴을 화면에 보여주세요"
+
+                            binding.feedbackStatusContainer.visibility = View.VISIBLE
+
+                            binding.iconPose.setImageResource(R.drawable.ic_select_empty)
+                            binding.iconPosition.setImageResource(R.drawable.ic_select_empty)
+                            binding.iconFraming.setImageResource(R.drawable.ic_select_empty)
+                            binding.iconAngle.setImageResource(R.drawable.ic_select_empty)
+                            binding.iconComposition.setImageResource(R.drawable.ic_select_empty)
+                            binding.iconGaze.setImageResource(R.drawable.ic_select_empty)
+                        }
+                    }
+
+
                 }
 
                 runOnUiThread {
@@ -286,8 +342,13 @@ class MainActivity : AppCompatActivity() {
 
             } catch (e: Exception) {
                 e.printStackTrace()
+
+                // ✅ ✅ ✅ [분석 중 크래시 예외 분기]
                 runOnUiThread {
                     hideLoadingOverlay()
+
+                    binding.feedbackMessageContainer.visibility = View.VISIBLE
+                    binding.feedbackMessage.text = "분석 중 오류가 발생했습니다"
 
                     val intent = Intent(
                         this,
@@ -315,8 +376,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.start()
-
     }
+
 
     // ✅ 포즈 유사도 계산
     private fun calculatePoseSimilarity(
@@ -444,11 +505,18 @@ class MainActivity : AppCompatActivity() {
             referenceUri = uri
             referenceBitmap = uriToBitmap(uri)
 
+            // ✅ 레퍼런스 모드 ON
+            isReferenceMode = true
+
+            // ✅ 피드백 UI 활성화
+            binding.feedbackMessageContainer.visibility = View.VISIBLE
+            binding.feedbackStatusContainer.visibility = View.VISIBLE
+            binding.feedbackMessage.text = "얼굴을 화면에 보여주세요"
+
             Toast.makeText(this, "✅ 레퍼런스 설정 완료", Toast.LENGTH_SHORT).show()
-
-
         }
     }
+
 
 
 
