@@ -316,8 +316,6 @@ class MainActivity : AppCompatActivity() {
             }
         }.start()
 
-
-
     }
 
     // ✅ 포즈 유사도 계산

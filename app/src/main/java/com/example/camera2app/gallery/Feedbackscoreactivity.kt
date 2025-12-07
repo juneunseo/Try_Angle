@@ -51,7 +51,7 @@ class FeedbackScoreActivity : ComponentActivity() {
         }
 
         // (i) 정보 버튼 → FeedbackActivity로 이동
-        // (i) 정보 버튼 → FeedbackActivity로 이동
+
         binding.btnInfo.setOnClickListener {
             val intent = Intent(this, FeedbackActivity::class.java).apply {
                 putExtra(FeedbackActivity.EXTRA_IMAGE_URI, capturedUri)
@@ -61,5 +61,11 @@ class FeedbackScoreActivity : ComponentActivity() {
             }
             startActivity(intent)
         }
+
+
+        binding.progressComposition.progress = (score * 10).toInt().coerceIn(0, 100)
+        binding.progressLighting.progress = (score * 8).toInt().coerceIn(0, 100)
+        binding.progressFocus.progress = (score * 6).toInt().coerceIn(0, 100)
+
     }
 }
