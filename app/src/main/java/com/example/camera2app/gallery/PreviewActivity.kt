@@ -21,6 +21,8 @@ import com.bumptech.glide.Glide
 import com.example.camera2app.R
 import com.example.camera2app.databinding.ActivityPreviewBinding
 import com.example.camera2app.reference.LikeManager
+import com.example.camera2app.ai.TryAngleOnDeviceAnalyzer
+
 
 class PreviewActivity : ComponentActivity() {
 
@@ -38,6 +40,9 @@ class PreviewActivity : ComponentActivity() {
         get() = if (photoList.isNotEmpty() && currentPosition in photoList.indices)
             photoList[currentPosition] else null
 
+    private lateinit var tryAngleAnalyzer: TryAngleOnDeviceAnalyzer
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -45,6 +50,12 @@ class PreviewActivity : ComponentActivity() {
         setContentView(binding.root)
 
         LikeManager.init(this)
+
+        tryAngleAnalyzer = TryAngleOnDeviceAnalyzer(
+            context = this,
+            enableLegacySystem = false
+        )
+
 
         // ✅ 공유 홀더에서 사진 목록 가져오기
         photoList = PhotoListHolder.photos.toMutableList()
@@ -95,12 +106,41 @@ class PreviewActivity : ComponentActivity() {
         }
 
         binding.btnInfo.setOnClickListener {
-            Toast.makeText(
-                this,
-                "ℹ 현재 Preview 화면에서는 AI 분석이 비활성화 되어 있습니다.",
-                Toast.LENGTH_SHORT
-            ).show()
+            val uri = currentUri ?: return@setOnClickListener
+            val bitmap = loadBitmap(uri)
+
+            tryAngleAnalyzer.analyzeFrame(bitmap) { feedback ->
+                runOnUiThread {
+
+                    val score = feedback.compressionInfo?.index ?: 4.0f
+                    val message = feedback.primary ?: "기본 분석 결과입니다"
+
+                    val intent = Intent(this, FeedbackActivity::class.java).apply {
+
+                        // ✅ 1️⃣ 이미지 URI (이건 이미 잘 돼 있음)
+                        putExtra("extra_image_uri", uri.toString())
+
+                        // ✅ 2️⃣ 갤러리 단독 분석 → 레퍼런스 없음
+                        putExtra("EXTRA_REFERENCE_URI", null as String?)
+
+                        // ✅ 3️⃣ 점수
+                        putExtra("EXTRA_SCORE", score)
+
+                        // ✅ 4️⃣ 메시지
+                        putExtra("EXTRA_FEEDBACK_MESSAGE", message)
+
+                        // ✅ ✅ ✅ 5️⃣ 이 한 줄이 핵심!!!
+                        putExtra("EXTRA_IS_PERSON_DETECTED", true)
+                    }
+
+                    startActivity(intent)
+                }
+            }
         }
+
+
+
+
 
         binding.btnShare.setOnClickListener { sharePhoto() }
         binding.btnFavorite.setOnClickListener { toggleFavorite() }
