@@ -40,6 +40,9 @@ class TryAngleOnDeviceAnalyzer(
     // ✅ 병렬 스레드 풀
     private val executor = Executors.newFixedThreadPool(3)
 
+    private val v15Generator = V15FeedbackGenerator.shared
+
+
     init {
         Log.d("TryAngle", "✅ TryAngle On-Device Analyzer Initialized")
     }
@@ -51,78 +54,57 @@ class TryAngleOnDeviceAnalyzer(
         image: Bitmap,
         callback: (TryAngleFeedback) -> Unit
     ) {
-
         val startTime = SystemClock.elapsedRealtime()
 
-        var poseResult: PoseResult? = null
-        var depthResult: DepthResult? = null
-        var legacyBBox: RectF? = null
-
-        val latch = CountDownLatch(
-            if (enableLegacySystem) 3 else 2
-        )
-
-        // 1️⃣ RTMPose
+        // ✅ 1️⃣ RTMPose 먼저 실행 → 프리뷰 즉시 반영
         executor.execute {
-            try {
-                poseResult = rtmposeRunner.detect(image)
+            val poseResult = try {
+                rtmposeRunner.detect(image)
             } catch (e: Exception) {
                 Log.e("TryAngle", "❌ RTMPose detect failed", e)
-            } finally {
-                latch.countDown()
+                null
             }
-        }
-
-        // 2️⃣ Depth
-        executor.execute {
-            try {
-                depthResult =
-                    poseResult?.boundingBox?.let { faceRect ->
-                        depthEstimator.estimateDistance(
-                            faceRect = faceRect,
-                            imageWidth = image.width,
-                            zoomFactor = 1.0f
-                        )
-                    }
-            } catch (e: Exception) {
-                Log.e("TryAngle", "❌ Depth estimate failed", e)
-            } finally {
-                latch.countDown()
-            }
-        }
-
-        // 3️⃣ Grounding DINO (Legacy)
-        groundingDino?.let { dino ->
-            executor.execute {
-                try {
-                    // ✅ detectPerson ❌ → detectOne ✅
-                    legacyBBox = dino.detectOne(image)
-                } catch (e: Exception) {
-                    Log.e("TryAngle", "❌ DINO detect failed", e)
-                } finally {
-                    latch.countDown()
-                }
-            }
-        }
-
-        // ✅ 모든 분석 종료 후 피드백 생성
-        executor.execute {
-            latch.await()
 
             val processingTime =
                 (SystemClock.elapsedRealtime() - startTime) / 1000.0
 
-            performanceStats.update(processingTime)
-
-            val feedback = feedbackGenerator.generateFeedback(
+            // ✅ 2️⃣ Legacy / Depth 없이 빠른 피드백 생성
+            val fastFeedback = feedbackGenerator.generateFeedback(
                 pose = poseResult,
-                legacyBBox = legacyBBox,
+                legacyBBox = null,           // ✅ 프리뷰에서는 DINO 절대 사용 X
                 image = image,
                 processingTime = processingTime
             )
 
-            callback(feedback)
+            // ✅ 3️⃣ v1.5 Gate 시스템 메시지로 교체
+            val gateEvaluation = GateSystem.fromFeedback(fastFeedback)
+
+            val primaryFromV15 =
+                V15FeedbackGenerator.shared.generatePrimaryFeedback(gateEvaluation)
+
+            val finalFeedback = fastFeedback.copy(
+                primary = primaryFromV15
+            )
+
+            // ✅ ✅ ✅ 프리뷰는 여기서 바로 UI 반영 (지연 없음)
+            callback(finalFeedback)
         }
+
+        // -------------------------------------------------
+        // ⛔ 아래는 "프리뷰"에서는 굳이 안 돌려도 됨
+        // -------------------------------------------------
+
+        if (enableLegacySystem) {
+            executor.execute {
+                try {
+                    groundingDino?.detectOne(image)
+                } catch (e: Exception) {
+                    Log.e("TryAngle", "❌ DINO detect failed", e)
+                }
+            }
+        }
+
+        // Depth도 프리뷰에서는 생략 권장
     }
 
     // =========================================

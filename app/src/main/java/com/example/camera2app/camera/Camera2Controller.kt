@@ -585,7 +585,21 @@ class Camera2Controller(
 
             val out = ByteArrayOutputStream()
             cropped.compress(Bitmap.CompressFormat.JPEG, 96, out)
-            onSaved(saveJpeg(out.toByteArray()))
+            val jpegBytes = out.toByteArray()
+
+// ✅ 1️⃣ 썸네일용 Bitmap 즉시 생성
+            val thumb = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+
+// ✅ 2️⃣ UI에 썸네일 즉시 표시 (저장 기다리지 않음!)
+            (context as? com.example.camera2app.MainActivity)
+                ?.showThumbnailInstant(thumb)
+
+// ✅ 3️⃣ 저장은 백그라운드에서 천천히
+            bgHandler?.post {
+                val uri = saveJpeg(jpegBytes)
+                onSaved(uri)   // 갤러리 실제 경로 등록은 나중에
+            }
+
 
         }, bgHandler)
 

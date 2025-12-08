@@ -400,26 +400,73 @@ class MainActivity : AppCompatActivity() {
 
         showLoadingOverlay()
 
-        tryAngleAnalyzer.analyzeFrameWithReference(
-            image = bitmap,
-            referenceImage = referenceBitmap!!
-        ) { feedback ->
+        Thread {
+            try {
+                // ✅ 1단계: 사람 탐지
+                val bbox = yoloxDetector.detectPerson(bitmap)
+                val refBbox = yoloxDetector.detectPerson(referenceBitmap!!)
 
-            runOnUiThread {
-                hideLoadingOverlay()
-                val score = feedback.compressionInfo?.index ?: 1f
+                var finalScore = 0f
+                var finalMessage = "사람 인식 실패"
 
-                val intent = Intent(this, FeedbackScoreActivity::class.java).apply {
-                    putExtra(FeedbackScoreActivity.EXTRA_CAPTURED_URI, uri.toString())
-                    putExtra(FeedbackScoreActivity.EXTRA_REFERENCE_URI, referenceUri?.toString())
-                    putExtra(FeedbackScoreActivity.EXTRA_SCORE, score)
-                    putExtra(FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE, feedback.primary)
+                if (bbox != null && refBbox != null) {
+
+                    // ✅ 2단계: 포즈 추정
+                    val pose1 = poseEstimator.estimatePose(bitmap, bbox)
+                    val pose2 = poseEstimator.estimatePose(referenceBitmap!!, refBbox)
+
+                    if (pose1 != null && pose2 != null) {
+
+                        // ✅ 3단계: 네가 만든 진짜 점수 엔진!
+                        finalScore = calculatePoseSimilarity(pose1, pose2)
+                        finalMessage = generateFeedbackMessage(finalScore)
+
+                    } else {
+                        finalScore = 0f
+                        finalMessage = "포즈 추정 실패"
+                    }
+
+                } else {
+                    finalScore = 0f
+                    finalMessage = "사람 인식 실패"
                 }
 
-                startActivity(intent)
-            }
-        }
+                runOnUiThread {
+                    hideLoadingOverlay()
 
+                    val intent = Intent(this, FeedbackScoreActivity::class.java).apply {
+                        putExtra(FeedbackScoreActivity.EXTRA_CAPTURED_URI, uri.toString())
+                        putExtra(FeedbackScoreActivity.EXTRA_REFERENCE_URI, referenceUri?.toString())
+                        putExtra(FeedbackScoreActivity.EXTRA_SCORE, finalScore)
+                        putExtra(FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE, finalMessage)
+                    }
+
+                    startActivity(intent)
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+
+                runOnUiThread {
+                    hideLoadingOverlay()
+
+                    val intent = Intent(this, FeedbackScoreActivity::class.java).apply {
+                        putExtra(FeedbackScoreActivity.EXTRA_CAPTURED_URI, uri.toString())
+                        putExtra(FeedbackScoreActivity.EXTRA_REFERENCE_URI, referenceUri?.toString())
+                        putExtra(FeedbackScoreActivity.EXTRA_SCORE, 0f)
+                        putExtra(FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE, "분석 중 오류 발생")
+                    }
+
+                    startActivity(intent)
+                }
+            }
+        }.start()
+    }
+
+    fun showThumbnailInstant(bitmap: Bitmap) {
+        runOnUiThread {
+            binding.lastThumbnail.setImageBitmap(bitmap)
+        }
     }
 
 

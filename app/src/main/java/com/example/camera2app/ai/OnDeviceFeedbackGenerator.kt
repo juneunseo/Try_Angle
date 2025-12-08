@@ -69,8 +69,9 @@ class OnDeviceFeedbackGenerator(
         //--------------------------------------------------------
         // ✅ 3️⃣ 사람 없음 → 무조건 1점
         //--------------------------------------------------------
-        if (pose == null || pose.keypoints.count { it.second > 0.5f } < 5) {
-            Log.e("TryAngleScore", "❌ No person detected → score = 1")
+        if (bbox == null || pose == null){
+
+        Log.e("TryAngleScore", "❌ No person detected → score = 1")
             return TryAngleFeedback(
                 primary = "사람을 찾을 수 없습니다",
                 suggestions = listOf("화면에 전신이 보이도록 촬영하세요"),
@@ -148,7 +149,7 @@ class OnDeviceFeedbackGenerator(
         val compression = CompressionInfo(index = score)
 
         return TryAngleFeedback(
-            primary = if (primary.isEmpty()) "카메라 위치 조정 중..." else primary,
+            primary = if (primary.isEmpty()) "구도를 조정해 주세요" else primary,
             suggestions = suggestions.take(3),
             movement = movement,
             marginInfo = marginInfo,
@@ -244,6 +245,11 @@ class OnDeviceFeedbackGenerator(
         if (visible < 40) {
             suggestions.add("전신이 보이도록 조정하세요")
         }
+
+        if (primary == null && bbox != null) {
+            primary = "구도를 조정해 주세요"
+        }
+
 
         return Triple(primary, suggestions, movement)
     }

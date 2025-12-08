@@ -256,7 +256,88 @@ class GateSystem private constructor() {
         }
     }
 
+
     companion object {
         val shared = GateSystem()
+
+        fun fromFeedback(feedback: TryAngleFeedback): GateEvaluation {
+
+            val score = feedback.compressionInfo?.index ?: 1f
+            val margin = feedback.marginInfo
+            val movement = feedback.movement
+
+            val gate1 = if (margin != null && margin.balanceScore >= 0.7f) {
+                GateResult(
+                    name = "여백 균형",
+                    score = margin.balanceScore,
+                    threshold = 0.7f,
+                    feedback = "여백 균형이 잘 맞습니다"
+                )
+            } else {
+                GateResult(
+                    name = "여백 균형",
+                    score = margin?.balanceScore ?: 0f,
+                    threshold = 0.7f,
+                    feedback = "좌우 여백을 맞춰주세요"
+                )
+            }
+
+            val gate2 = if (score >= 6.5f) {
+                GateResult(
+                    name = "프레이밍",
+                    score = score,
+                    threshold = 6.5f,
+                    feedback = "프레이밍이 안정적이에요"
+                )
+            } else {
+                GateResult(
+                    name = "프레이밍",
+                    score = score,
+                    threshold = 6.5f,
+                    feedback = "인물이 너무 치우쳐 있어요"
+                )
+            }
+
+            val gate3 = if (movement == null) {
+                GateResult(
+                    name = "구도",
+                    score = 1f,
+                    threshold = 1f,
+                    feedback = "구도가 안정적입니다"
+                )
+            } else {
+                GateResult(
+                    name = "구도",
+                    score = 0f,
+                    threshold = 1f,
+                    feedback = "카메라 위치를 조금 이동하세요"
+                )
+            }
+
+            val gate4 = if (score >= 8f) {
+                GateResult(
+                    name = "압축감",
+                    score = score,
+                    threshold = 8f,
+                    feedback = "압축감이 좋습니다"
+                )
+            } else {
+                GateResult(
+                    name = "압축감",
+                    score = score,
+                    threshold = 8f,
+                    feedback = "카메라와 거리를 조절해보세요"
+                )
+            }
+
+            return GateEvaluation(
+                gate1 = gate1,
+                gate2 = gate2,
+                gate3 = gate3,
+                gate4 = gate4
+            )
+        }
     }
+
+
 }
