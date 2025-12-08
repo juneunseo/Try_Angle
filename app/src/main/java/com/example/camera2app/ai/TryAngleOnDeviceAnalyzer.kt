@@ -56,8 +56,9 @@ class TryAngleOnDeviceAnalyzer(
     ) {
         val startTime = SystemClock.elapsedRealtime()
 
-        // ✅ 1️⃣ RTMPose 먼저 실행 → 프리뷰 즉시 반영
         executor.execute {
+
+            // ✅ 1️⃣ RTMPose
             val poseResult = try {
                 rtmposeRunner.detect(image)
             } catch (e: Exception) {
@@ -68,32 +69,29 @@ class TryAngleOnDeviceAnalyzer(
             val processingTime =
                 (SystemClock.elapsedRealtime() - startTime) / 1000.0
 
-            // ✅ 2️⃣ Legacy / Depth 없이 빠른 피드백 생성
+            // ✅ 2️⃣ 빠른 피드백 생성 (프리뷰용)
             val fastFeedback = feedbackGenerator.generateFeedback(
                 pose = poseResult,
-                legacyBBox = null,           // ✅ 프리뷰에서는 DINO 절대 사용 X
+                legacyBBox = null,   // ✅ 프리뷰에서는 Legacy/DINO 완전 차단
                 image = image,
                 processingTime = processingTime
             )
 
-            // ✅ 3️⃣ v1.5 Gate 시스템 메시지로 교체
+            // ✅ 3️⃣ Gate 기반 점수 평가 (✅ 여기서 fastFeedback 사용해야 함)
             val gateEvaluation = GateSystem.fromFeedback(fastFeedback)
 
             val primaryFromV15 =
                 V15FeedbackGenerator.shared.generatePrimaryFeedback(gateEvaluation)
 
+            // ✅ 4️⃣ 최종 피드백 생성
             val finalFeedback = fastFeedback.copy(
                 primary = primaryFromV15
             )
 
-            // ✅ ✅ ✅ 프리뷰는 여기서 바로 UI 반영 (지연 없음)
             callback(finalFeedback)
         }
 
-        // -------------------------------------------------
-        // ⛔ 아래는 "프리뷰"에서는 굳이 안 돌려도 됨
-        // -------------------------------------------------
-
+        // ✅ Legacy는 프리뷰에서는 절대 점수에 영향 안 줌
         if (enableLegacySystem) {
             executor.execute {
                 try {
@@ -103,9 +101,8 @@ class TryAngleOnDeviceAnalyzer(
                 }
             }
         }
-
-        // Depth도 프리뷰에서는 생략 권장
     }
+
 
     // =========================================
     // ✅ 레퍼런스 분석

@@ -23,6 +23,8 @@ import android.util.Log
 import android.content.pm.PackageManager
 import com.example.camera2app.gallery.FeedbackScoreActivity
 import com.example.camera2app.ai.TryAngleOnDeviceAnalyzer
+import com.example.camera2app.ai.GateSystem
+
 
 
 class MainActivity : AppCompatActivity() {
@@ -400,68 +402,52 @@ class MainActivity : AppCompatActivity() {
 
         showLoadingOverlay()
 
-        Thread {
-            try {
-                // ✅ 1단계: 사람 탐지
-                val bbox = yoloxDetector.detectPerson(bitmap)
-                val refBbox = yoloxDetector.detectPerson(referenceBitmap!!)
+        // ✅ ✅ ✅ 이제 Thread 직접 쓰지 말고 v1.5 분석기로 통합
+        tryAngleAnalyzer.analyzeFrame(bitmap) { feedback ->
 
-                var finalScore = 0f
-                var finalMessage = "사람 인식 실패"
+            runOnUiThread {
+                hideLoadingOverlay()
 
-                if (bbox != null && refBbox != null) {
+                // ✅ ✅ ✅ GateSystem 기반 최종 점수 계산
+                val gateEvaluation = GateSystem.fromFeedback(feedback)
 
-                    // ✅ 2단계: 포즈 추정
-                    val pose1 = poseEstimator.estimatePose(bitmap, bbox)
-                    val pose2 = poseEstimator.estimatePose(referenceBitmap!!, refBbox)
+                val finalScore =
+                    (gateEvaluation.overallScore * 10f).coerceIn(0f, 10f)
 
-                    if (pose1 != null && pose2 != null) {
+                val finalMessage = feedback.primary
 
-                        // ✅ 3단계: 네가 만든 진짜 점수 엔진!
-                        finalScore = calculatePoseSimilarity(pose1, pose2)
-                        finalMessage = generateFeedbackMessage(finalScore)
+                val intent = Intent(
+                    this,
+                    FeedbackScoreActivity::class.java
+                ).apply {
 
-                    } else {
-                        finalScore = 0f
-                        finalMessage = "포즈 추정 실패"
-                    }
+                    putExtra(
+                        FeedbackScoreActivity.EXTRA_CAPTURED_URI,
+                        uri.toString()
+                    )
 
-                } else {
-                    finalScore = 0f
-                    finalMessage = "사람 인식 실패"
+                    putExtra(
+                        FeedbackScoreActivity.EXTRA_REFERENCE_URI,
+                        referenceUri?.toString()
+                    )
+
+                    // ✅ ✅ ✅ 이제 여기로 Gate 점수가 들어감
+                    putExtra(
+                        FeedbackScoreActivity.EXTRA_SCORE,
+                        finalScore
+                    )
+
+                    putExtra(
+                        FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
+                        finalMessage
+                    )
                 }
 
-                runOnUiThread {
-                    hideLoadingOverlay()
-
-                    val intent = Intent(this, FeedbackScoreActivity::class.java).apply {
-                        putExtra(FeedbackScoreActivity.EXTRA_CAPTURED_URI, uri.toString())
-                        putExtra(FeedbackScoreActivity.EXTRA_REFERENCE_URI, referenceUri?.toString())
-                        putExtra(FeedbackScoreActivity.EXTRA_SCORE, finalScore)
-                        putExtra(FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE, finalMessage)
-                    }
-
-                    startActivity(intent)
-                }
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-
-                runOnUiThread {
-                    hideLoadingOverlay()
-
-                    val intent = Intent(this, FeedbackScoreActivity::class.java).apply {
-                        putExtra(FeedbackScoreActivity.EXTRA_CAPTURED_URI, uri.toString())
-                        putExtra(FeedbackScoreActivity.EXTRA_REFERENCE_URI, referenceUri?.toString())
-                        putExtra(FeedbackScoreActivity.EXTRA_SCORE, 0f)
-                        putExtra(FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE, "분석 중 오류 발생")
-                    }
-
-                    startActivity(intent)
-                }
+                startActivity(intent)
             }
-        }.start()
+        }
     }
+
 
     fun showThumbnailInstant(bitmap: Bitmap) {
         runOnUiThread {

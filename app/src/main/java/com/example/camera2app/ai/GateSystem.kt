@@ -258,47 +258,47 @@ class GateSystem private constructor() {
 
 
     companion object {
+
         val shared = GateSystem()
 
         fun fromFeedback(feedback: TryAngleFeedback): GateEvaluation {
 
-            val score = feedback.compressionInfo?.index ?: 1f
-            val margin = feedback.marginInfo
-            val movement = feedback.movement
-
-            val gate1 = if (margin != null && margin.balanceScore >= 0.7f) {
+            // ✅ 1. 여백 Gate (margin)
+            // ✅ 1. 여백 Gate (margin)
+            val gate1 = feedback.marginInfo?.let { margin ->
                 GateResult(
                     name = "여백 균형",
                     score = margin.balanceScore,
                     threshold = 0.7f,
-                    feedback = "여백 균형이 잘 맞습니다"
+                    feedback = if (margin.balanceScore >= 0.7f)
+                        "여백 균형이 안정적입니다"
+                    else
+                        "여백을 조정하세요"   // ✅ movementDirection 제거
                 )
-            } else {
-                GateResult(
-                    name = "여백 균형",
-                    score = margin?.balanceScore ?: 0f,
-                    threshold = 0.7f,
-                    feedback = "좌우 여백을 맞춰주세요"
-                )
-            }
+            } ?: GateResult(
+                name = "여백 균형",
+                score = 0.6f,
+                threshold = 0.7f,
+                feedback = "여백 분석 중"
+            )
 
-            val gate2 = if (score >= 6.5f) {
-                GateResult(
-                    name = "프레이밍",
-                    score = score,
-                    threshold = 6.5f,
-                    feedback = "프레이밍이 안정적이에요"
-                )
-            } else {
-                GateResult(
-                    name = "프레이밍",
-                    score = score,
-                    threshold = 6.5f,
-                    feedback = "인물이 너무 치우쳐 있어요"
-                )
-            }
 
-            val gate3 = if (movement == null) {
+// ✅ 2. 프레이밍 Gate
+            val framingScore = feedback.compressionInfo?.index ?: 0.65f
+
+            val gate2 = GateResult(
+                name = "프레이밍",
+                score = framingScore,
+                threshold = 0.65f,
+                feedback = if (framingScore >= 0.65f)
+                    "프레이밍이 안정적입니다"
+                else
+                    "조금 더 인물 중심으로 이동하세요"
+            )
+
+
+// ✅ 3. 구도 Gate (movement 존재 여부만 체크)
+            val gate3 = if (feedback.movement == null) {
                 GateResult(
                     name = "구도",
                     score = 1f,
@@ -310,25 +310,23 @@ class GateSystem private constructor() {
                     name = "구도",
                     score = 0f,
                     threshold = 1f,
-                    feedback = "카메라 위치를 조금 이동하세요"
+                    feedback = "카메라 위치를 조금 조정하세요"   // ✅ message 직접 참조 제거
                 )
             }
 
-            val gate4 = if (score >= 8f) {
-                GateResult(
-                    name = "압축감",
-                    score = score,
-                    threshold = 8f,
-                    feedback = "압축감이 좋습니다"
-                )
-            } else {
-                GateResult(
-                    name = "압축감",
-                    score = score,
-                    threshold = 8f,
-                    feedback = "카메라와 거리를 조절해보세요"
-                )
-            }
+
+// ✅ 4. 압축감 Gate
+            val compressionScore = feedback.compressionInfo?.index ?: 1f
+
+            val gate4 = GateResult(
+                name = "압축감",
+                score = compressionScore,
+                threshold = 0.6f,
+                feedback = if (compressionScore >= 0.6f)
+                    "압축감이 안정적입니다"
+                else
+                    "카메라와의 거리를 조절해보세요"
+            )
 
             return GateEvaluation(
                 gate1 = gate1,
@@ -336,6 +334,7 @@ class GateSystem private constructor() {
                 gate3 = gate3,
                 gate4 = gate4
             )
+
         }
     }
 
