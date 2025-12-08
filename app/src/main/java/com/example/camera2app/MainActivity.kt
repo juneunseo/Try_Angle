@@ -152,7 +152,7 @@ class MainActivity : AppCompatActivity() {
                     enableLegacySystem = false
                 )
 
-
+                Log.e("REALTIME_AI", "✅ tryAngleAnalyzer 초기화 완료")
                 isAIInitialized = true
 
                 val time = System.currentTimeMillis() - start
@@ -462,6 +462,55 @@ class MainActivity : AppCompatActivity() {
             else -> "포즈 차이가 큽니다"
         }
     }
+
+    private var lastRealtimeAnalyzeTime = 0L
+
+    fun analyzeRealtimeFrame(bitmap: Bitmap) {
+        Log.e("REALTIME_AI", "✅ analyzeRealtimeFrame() 진입")
+
+        // ✅ AI 아직 준비 안 됐으면 절대 진입 금지
+        if (!::tryAngleAnalyzer.isInitialized) {
+            Log.e("REALTIME_AI", "❌ tryAngleAnalyzer 아직 초기화 안 됨 → 분석 생략")
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        if (now - lastRealtimeAnalyzeTime < 400) return
+        lastRealtimeAnalyzeTime = now
+
+        try {
+            tryAngleAnalyzer.analyzeFrame(bitmap) { feedback ->
+
+                Log.e("REALTIME_AI", "✅ 실시간 분석 결과 수신")
+
+                runOnUiThread {
+                    val score = feedback.compressionInfo?.index ?: 0f
+                    binding.feedbackMessageContainer.visibility = View.VISIBLE
+                    binding.feedbackMessage.text = feedback.primary
+
+                    val personDetected = score > 1f
+                    binding.iconPose.setImageResource(
+                        if (personDetected) R.drawable.ic_select_checked
+                        else R.drawable.ic_select_empty
+                    )
+
+                    binding.iconComposition.setImageResource(
+                        if (personDetected) R.drawable.ic_select_checked
+                        else R.drawable.ic_select_empty
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("REALTIME_AI", "❌ analyzeRealtimeFrame 크래시: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+
+
+
+
+
+
 
     // ----------------------------------------------------
     // 버튼들 (UI 전체)

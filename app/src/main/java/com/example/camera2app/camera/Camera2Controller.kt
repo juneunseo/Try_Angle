@@ -167,6 +167,8 @@ class Camera2Controller(
 
     private val onImageAvailableListener =
         ImageReader.OnImageAvailableListener { reader ->
+
+            Log.e("REALTIME_AI", "✅ ImageReader 프레임 수신됨")
             val img = reader.acquireNextImage() ?: return@OnImageAvailableListener
 
             val buffer = img.planes[0].buffer
@@ -184,6 +186,7 @@ class Camera2Controller(
             // 화면 비율 크롭
             val cropped = cropToAspect(rotated, aspectMode)
 
+// ✅ 기존 실시간 분석
             realtimeAnalyzer.analyzeFrame(
                 bitmap = cropped,
                 isFrontCamera = isFrontCamera(),
@@ -191,8 +194,14 @@ class Camera2Controller(
 
             )
 
+            // ✅ ✅ ✅ 여기!
+            Log.e("REALTIME_AI", "📸 실시간 프레임 전달됨 (Camera2 → Main)")
 
-            // -------------- 🔥 포즈 추론 시작 --------------
+// ✅ ✅ ✅ 여기 한 줄 추가하면 MainActivity 실시간 연동 완료
+            (context as? com.example.camera2app.MainActivity)
+                ?.analyzeRealtimeFrame(cropped)
+
+// ✅ 기존 포즈 오버레이
             try {
                 val poseResult = poseRunner.detect(cropped)
 
@@ -201,13 +210,13 @@ class Camera2Controller(
                         kps = it.keypoints,
                         box = it.boundingBox
                     )
-
                 }
 
             } catch (e: Exception) {
                 e.printStackTrace()
                 Log.e("PoseAI", "Pose detection failed: ${e.message}")
             }
+
         }
 
 
@@ -541,25 +550,21 @@ class Camera2Controller(
     // =========================================================================================
     // ImageReader (JPEG capture + central crop)
     // =========================================================================================
+    // ✅ 클래스 상단에 먼저 선언
+    private lateinit var realtimeReader: ImageReader
+
+    // ✅ setupImageReader() 안에 그대로 추가
     private fun setupImageReader() {
         val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
         val jpegSizes = map.getOutputSizes(ImageFormat.JPEG)
 
-        // 센서 비율 그대로 사용 (캡처에서도 센서 crop 영역만 저장)
-        // 비율 보정은 applyZoomAndAspect()의 sensor crop이 담당하므로,
-        // JPEG 해상도는 가장 큰 센서 해상도 그대로 사용하면 됨.
         val captureSize = jpegSizes.maxByOrNull { it.width * it.height }
             ?: Size(1920, 1080)
 
-        Log.d(
-            TAG,
-            "setupImageReader: selected JPEG size = ${captureSize.width} x ${captureSize.height}"
-        )
-
-        // 기존 ImageReader 제거
+        // ============================
+        // ✅ 1️⃣ JPEG ImageReader (기존 촬영용)
+        // ============================
         imageReader?.close()
-
-        // 새로운 ImageReader 생성 (crop 없이 전체 이미지 받아옴)
         imageReader = ImageReader.newInstance(
             captureSize.width,
             captureSize.height,
@@ -567,38 +572,70 @@ class Camera2Controller(
             3
         )
 
-// ★ 새로운 저장 리스너: 화면비에 맞춰 크롭하여 저장
         imageReader!!.setOnImageAvailableListener({ reader ->
-
             val img = reader.acquireNextImage() ?: return@setOnImageAvailableListener
-
             val buf = img.planes[0].buffer
             val bytes = ByteArray(buf.remaining()).apply { buf.get(this) }
             img.close()
 
-            // 1) JPEG → Bitmap 로드
             val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-
-            // 2) 회전 + 전면이면 미러링 적용
             val isFront = lensFacing == CameraCharacteristics.LENS_FACING_FRONT
             val transformed = transformBitmap(bmp, lastJpegOrientation, mirror = isFront)
-
-
-            // 2) 회전 적용
             val cropped = cropToAspect(transformed, aspectMode)
 
-
-            // 4) 최종 JPEG로 압축
             val out = ByteArrayOutputStream()
             cropped.compress(Bitmap.CompressFormat.JPEG, 96, out)
-            val finalBytes = out.toByteArray()
-
-            // 5) 저장
-            onSaved(saveJpeg(finalBytes))
+            onSaved(saveJpeg(out.toByteArray()))
 
         }, bgHandler)
 
+        // ============================
+        // ✅ 2️⃣ ✅✅✅ 실시간 YUV ImageReader (여기가 핵심!!)
+        // ============================
+        if (::realtimeReader.isInitialized) {
+            realtimeReader.close()
+        }
+
+        realtimeReader = ImageReader.newInstance(
+            previewSize.width,
+            previewSize.height,
+            ImageFormat.YUV_420_888,   // ✅ 실시간 분석용
+            3
+        )
+
+        realtimeReader.setOnImageAvailableListener(realtimeListener, bgHandler)
+
+        Log.e("REALTIME_AI", "✅ setupImageReader() 완료 → realtimeReader 준비됨")
+
     }
+
+    // ✅✅✅ 실시간 분석용 YUV 리스너 (이게 없어서 지금까지 전부 안 됐던 것)
+    private val realtimeListener = ImageReader.OnImageAvailableListener { reader ->
+
+        Log.e("REALTIME_AI", "✅ YUV 실시간 프레임 수신됨")
+
+        val image = reader.acquireLatestImage() ?: return@OnImageAvailableListener
+
+        try {
+            val bitmap = realtimeAnalyzer.yuvToBitmap(image)
+
+            Log.e("REALTIME_AI", "✅ YUV → Bitmap 변환 성공")
+
+            // ✅ MainActivity로 실시간 전달
+            (context as? com.example.camera2app.MainActivity)
+                ?.analyzeRealtimeFrame(bitmap)
+
+        } catch (e: Exception) {
+            Log.e("REALTIME_AI", "❌ 실시간 분석 실패: ${e.message}")
+        } finally {
+            image.close()
+        }
+    }
+
+
+
+
+
 
 
     // =========================================================================================
@@ -608,20 +645,27 @@ class Camera2Controller(
         val device = cameraDevice ?: return
         val st = textureView.surfaceTexture ?: return
 
+        // ✅ realtimeReader가 아직 없으면 세션 만들지 말고 중단
+        if (!::realtimeReader.isInitialized) {
+            Log.e("REALTIME_AI", "❌ realtimeReader 아직 초기화 안 됨 → startPreview 중단")
+            return
+        }
+
         st.setDefaultBufferSize(previewSize.width, previewSize.height)
         val previewSurface = Surface(st)
         val jpegSurface = imageReader!!.surface
+        val realtimeSurface = realtimeReader.surface
 
         device.createCaptureSession(
-            listOf(previewSurface, jpegSurface),
+            listOf(previewSurface, jpegSurface, realtimeSurface),
             object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(s: CameraCaptureSession) {
                     session = s
 
                     val req = device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                         addTarget(previewSurface)
+                        addTarget(realtimeSurface)
 
-                        // ⭐ 순서 변경: 플래시를 먼저 적용
                         applyFlash(this, true)
                         applyCommonControls(this, preview = true)
                         applyColorAuto(this)
@@ -632,9 +676,11 @@ class Camera2Controller(
                 }
 
                 override fun onConfigureFailed(s: CameraCaptureSession) {}
-            }, bgHandler
+            },
+            bgHandler
         )
     }
+
 
 
     // =========================================================================================
