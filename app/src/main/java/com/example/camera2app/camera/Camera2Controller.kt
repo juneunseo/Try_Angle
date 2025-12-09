@@ -611,11 +611,12 @@ class Camera2Controller(
         }
 
         realtimeReader = ImageReader.newInstance(
-            previewSize.width,
-            previewSize.height,
-            ImageFormat.YUV_420_888,   // ✅ 실시간 분석용
-            3
+            1280,
+            720,
+            ImageFormat.YUV_420_888,
+            2
         )
+
 
         realtimeReader.setOnImageAvailableListener(realtimeListener, bgHandler)
 

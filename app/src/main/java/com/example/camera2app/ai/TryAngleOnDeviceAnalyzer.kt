@@ -28,8 +28,10 @@ class TryAngleOnDeviceAnalyzer(
     private val depthEstimator = DepthEstimator()
 
     // ✅ Grounding DINO (Legacy)
-    private val groundingDino =
-        if (enableLegacySystem) GroundingDinoONNX(context) else null
+
+    // ✅ Legacy DINO 비활성화 (현재 구조는 MainActivity에서 Async로만 사용)
+    private val groundingDino: GroundingDinoONNX? = null
+
 
     // ✅ Feedback Generator
     private val feedbackGenerator =
@@ -86,22 +88,17 @@ class TryAngleOnDeviceAnalyzer(
 
             val finalFeedback = fastFeedback.copy(
                 primary = primaryFromV15,
-                isPersonDetected = (poseResult != null)
+                isPersonDetected = poseResult?.keypoints
+                    ?.count { it.second > 0.5f }
+                    ?.let { it >= 6 } ?: false
+
             )
 
             // ✅ ✅ ✅ 딱 1번만 호출
             callback(finalFeedback)
         }
 
-        if (enableLegacySystem) {
-            executor.execute {
-                try {
-                    groundingDino?.detectOne(safeBitmap)
-                } catch (e: Exception) {
-                    Log.e("TryAngle", "❌ DINO detect failed", e)
-                }
-            }
-        }
+
     }
 
 
@@ -150,20 +147,20 @@ class TryAngleOnDeviceAnalyzer(
 
             val pose = rtmposeRunner.detect(image)
 
-            val legacyBBox = groundingDino?.detectOne(image)
 
             val processingTime =
                 (SystemClock.elapsedRealtime() - startTime) / 1000.0
 
             Log.e("TryAngleFlow", "✅ pose = ${pose != null}")
-            Log.e("TryAngleFlow", "✅ legacyBBox = ${legacyBBox != null}")
+
 
             val feedback = feedbackGenerator.generateFeedback(
                 pose = pose,
-                legacyBBox = legacyBBox,
+                legacyBBox = null,
                 image = image,
                 processingTime = processingTime
             )
+
 
 
             val finalScore: Float = if (!feedback.isPersonDetected) {

@@ -25,6 +25,7 @@ import com.example.camera2app.gallery.FeedbackScoreActivity
 import com.example.camera2app.ai.TryAngleOnDeviceAnalyzer
 import com.example.camera2app.ai.GateSystem
 import com.example.camera2app.ai.TryAngleFeedback
+import com.example.camera2app.ai.GroundingDinoONNX
 
 
 
@@ -42,6 +43,9 @@ class MainActivity : AppCompatActivity() {
 
     // ✅ v1.5 온디바이스 통합 분석기
     private lateinit var tryAngleAnalyzer: TryAngleOnDeviceAnalyzer
+    // ✅ Grounding DINO
+    private lateinit var groundingDino: GroundingDinoONNX
+
 
 
 
@@ -102,8 +106,14 @@ class MainActivity : AppCompatActivity() {
                     width: Int,
                     height: Int
                 ) {
-                    initCameraController()
+                    if (
+                        checkSelfPermission(Manifest.permission.CAMERA)
+                        == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        initCameraController()   // ✅ 권한 있을 때만 실행
+                    }
                 }
+
 
                 override fun onSurfaceTextureSizeChanged(
                     surface: SurfaceTexture,
@@ -159,6 +169,10 @@ class MainActivity : AppCompatActivity() {
 
                 yoloxDetector = YoloXDetector(this)
                 poseEstimator = RTMPoseEstimator(this)
+
+                groundingDino = GroundingDinoONNX(this)
+                Log.e("DINO", "✅ Grounding DINO ONNX 초기화 완료")
+
 
                 tryAngleAnalyzer = TryAngleOnDeviceAnalyzer(
                     context = this,
@@ -273,6 +287,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         showLoadingOverlay()
+
+
 
         try {
             tryAngleAnalyzer.analyzeFrame(bitmap) { feedback ->
@@ -399,45 +415,51 @@ class MainActivity : AppCompatActivity() {
     private var lastRealtimeAnalyzeTime = 0L
 
     fun analyzeRealtimeFrame(bitmap: Bitmap) {
-        // ✅ 레퍼런스 모드 아닐 때는 실시간 분석 자체 차단
         if (!isReferenceMode) return
-
-        Log.e("REALTIME_AI", "✅ analyzeRealtimeFrame() 진입 | w=${bitmap.width}, h=${bitmap.height}")
-
         if (!isAIInitialized) return
 
         val now = System.currentTimeMillis()
         if (now - lastRealtimeAnalyzeTime < 400) return
         lastRealtimeAnalyzeTime = now
 
-        tryAngleAnalyzer.analyzeFrame(bitmap) { feedback ->
+        // ✅ ✅ ✅ 1단계: Grounding DINO (사람 존재 확인용)
+        if (!groundingDino.isBusy()) {
+            groundingDino.detectOneAsync(bitmap) { dinoBox ->
 
-            Log.e("REALTIME_AI", "✅ 실시간 분석 결과 수신")
-            Log.e("REALTIME_AI", "score = ${feedback.compressionInfo?.index}")
-            Log.e("REALTIME_AI", "primary = ${feedback.primary}")
+                // 사람 없으면 포즈 분석도 하지 않음 (부하 차단)
+                if (dinoBox == null) {
+                    runOnUiThread {
+                        binding.feedbackMessageContainer.visibility = View.VISIBLE
+                        binding.feedbackMessage.text = "사람이 인식되지 않습니다"
+                    }
+                    return@detectOneAsync
+                }
 
-            runOnUiThread {
-                val score = feedback.compressionInfo?.index ?: 0f
+                // ✅ ✅ ✅ 2단계: 기존 TryAngle 분석
+                tryAngleAnalyzer.analyzeFrame(bitmap) { feedback ->
 
-                binding.feedbackMessageContainer.visibility = View.VISIBLE
-                binding.feedbackMessage.text = feedback.primary
+                    runOnUiThread {
+                        val score = feedback.compressionInfo?.index ?: 0f
 
-                val personDetected = score > 1f
+                        binding.feedbackMessageContainer.visibility = View.VISIBLE
+                        binding.feedbackMessage.text = feedback.primary
 
-                binding.iconPose.setImageResource(
-                    if (personDetected) R.drawable.ic_select_checked
-                    else R.drawable.ic_select_empty
-                )
+                        val personDetected = score > 1f
 
-                binding.iconComposition.setImageResource(
-                    if (personDetected) R.drawable.ic_select_checked
-                    else R.drawable.ic_select_empty
-                )
+                        binding.iconPose.setImageResource(
+                            if (personDetected) R.drawable.ic_select_checked
+                            else R.drawable.ic_select_empty
+                        )
+
+                        binding.iconComposition.setImageResource(
+                            if (personDetected) R.drawable.ic_select_checked
+                            else R.drawable.ic_select_empty
+                        )
+                    }
+                }
             }
         }
     }
-
-
 
 
 

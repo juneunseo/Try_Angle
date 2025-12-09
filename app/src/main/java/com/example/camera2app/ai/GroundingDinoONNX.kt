@@ -4,14 +4,13 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.RectF
 import ai.onnxruntime.*
-import kotlin.math.*
+import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
-
-
-
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.*
 
 data class Detection(
     val label: String,
@@ -23,9 +22,15 @@ class GroundingDinoONNX(private val context: Context) {
 
     private var env: OrtEnvironment? = null
     private var session: OrtSession? = null
-    private val inputSize = 800                 // 800 x 800 입력
+    private val inputSize = 800
 
-    // [CLS] person [SEP] = [101, 2711, 102]
+    // ✅ Coroutine 비동기 스코프
+    private val dinoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    // ✅ FP32 모델 중복 실행 방지
+    private val isRunning = AtomicBoolean(false)
+
+    // [CLS] person [SEP]
     private val personTokenIds = longArrayOf(101, 2711, 102)
 
     var isSessionLoaded: Boolean = false
@@ -42,56 +47,54 @@ class GroundingDinoONNX(private val context: Context) {
         try {
             env = OrtEnvironment.getEnvironment()
 
-            // 1) assets → 캐시 디렉토리에 복사
             val modelFile = File(context.filesDir, "grounding_dino.onnx")
-            if (!modelFile.exists()) {
-                context.assets.open("grounding_dino.onnx").use { input ->
-                    FileOutputStream(modelFile).use { output ->
-                        input.copyTo(output)
-                    }
+
+            // ✅ 항상 새로 복사 (깨진 파일 방지)
+            context.assets.open("grounding_dino.onnx").use { input ->
+                FileOutputStream(modelFile).use { output ->
+                    input.copyTo(output)
                 }
             }
 
-            // 2) SessionOptions 생성
             val sessionOptions = OrtSession.SessionOptions().apply {
                 setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+                setIntraOpNumThreads(4)
+                setInterOpNumThreads(2)
             }
 
-            // 3) 파일 경로로 세션 생성
             session = env!!.createSession(modelFile.absolutePath, sessionOptions)
-
             isSessionLoaded = true
-            println("✅ Grounding DINO ONNX model loaded.")
+
+            android.util.Log.e("DINO", "✅ Grounding DINO ONNX Loaded (OK)")
+
         } catch (e: Exception) {
-            println("❌ Failed to load Grounding DINO: ${e.message}")
+            android.util.Log.e("DINO", "❌ Failed to load Grounding DINO", e)
+
+            // ✅ ✅ ✅ 여기 중요
+            session = null
             isSessionLoaded = false
         }
     }
 
-
     // ---------------------------------------------------------
-    // 2. 전처리 (Bitmap -> FloatArray[1,3,800,800])
+    // 2. 전처리 (Bitmap -> FloatArray CHW)
     // ---------------------------------------------------------
     private fun preprocess(bitmap: Bitmap): FloatArray {
         val target = inputSize
 
-        // 1) 긴 변 기준 스케일
         val scale = target.toFloat() / max(bitmap.width, bitmap.height)
         val newW = (bitmap.width * scale).toInt()
         val newH = (bitmap.height * scale).toInt()
 
         val scaled = Bitmap.createScaledBitmap(bitmap, newW, newH, true)
 
-        // 2) 중앙 크롭 (800x800)
         val offsetX = max(0, (newW - target) / 2)
         val offsetY = max(0, (newH - target) / 2)
         val cropped = Bitmap.createBitmap(scaled, offsetX, offsetY, target, target)
 
-        // 3) 픽셀 추출
         val pixels = IntArray(target * target)
         cropped.getPixels(pixels, 0, target, 0, 0, target, target)
 
-        // 4) CHW float 배열로 변환 + ImageNet 정규화
         val floatArray = FloatArray(3 * target * target)
         val mean = floatArrayOf(0.485f, 0.456f, 0.406f)
         val std = floatArrayOf(0.229f, 0.224f, 0.225f)
@@ -116,21 +119,15 @@ class GroundingDinoONNX(private val context: Context) {
     }
 
     // ---------------------------------------------------------
-    // 3. 텍스트 입력 (person 토큰)
+    // 3. 텍스트 입력 생성
     // ---------------------------------------------------------
     private fun createTextInputs(): Map<String, OnnxTensor> {
         val envLocal = env!!
         val seqLen = personTokenIds.size
 
         val inputIds = OnnxTensor.createTensor(envLocal, arrayOf(personTokenIds))
-        val attentionMask = OnnxTensor.createTensor(
-            envLocal,
-            arrayOf(LongArray(seqLen) { 1L })
-        )
-        val tokenTypeIds = OnnxTensor.createTensor(
-            envLocal,
-            arrayOf(LongArray(seqLen) { 0L })
-        )
+        val attentionMask = OnnxTensor.createTensor(envLocal, arrayOf(LongArray(seqLen) { 1L }))
+        val tokenTypeIds = OnnxTensor.createTensor(envLocal, arrayOf(LongArray(seqLen) { 0L }))
 
         return mapOf(
             "input_ids" to inputIds,
@@ -140,8 +137,7 @@ class GroundingDinoONNX(private val context: Context) {
     }
 
     // ---------------------------------------------------------
-    // 4. 추론 (전처리 결과 -> logits, boxes)
-    //    반환 값: 두 개의 flat FloatArray
+    // 4. 추론
     // ---------------------------------------------------------
     private fun runInference(pre: FloatArray): Pair<FloatArray, FloatArray> {
         val envLocal = env!!
@@ -172,31 +168,22 @@ class GroundingDinoONNX(private val context: Context) {
 
         val outputs = sess.run(inputs)
 
-        android.util.Log.e("DINO", "outputs.size=${outputs.size()}")
-
-        val logitsRaw = outputs[0].value as Array<Array<FloatArray>>   // [1][900][1]
-        val boxesRaw  = outputs[1].value as Array<Array<FloatArray>>   // [1][900][4]
+        val logitsRaw = outputs[0].value as Array<Array<FloatArray>>
+        val boxesRaw = outputs[1].value as Array<Array<FloatArray>>
 
         val logitsTensor = FloatArray(900)
-        val boxesTensor  = FloatArray(900 * 4)
+        val boxesTensor = FloatArray(900 * 4)
 
         for (i in 0 until 900) {
             logitsTensor[i] = logitsRaw[0][i][0]
-
-            System.arraycopy(
-                boxesRaw[0][i], 0,
-                boxesTensor, i * 4, 4
-            )
+            System.arraycopy(boxesRaw[0][i], 0, boxesTensor, i * 4, 4)
         }
 
         return Pair(logitsTensor, boxesTensor)
     }
 
-
-
-
     // ---------------------------------------------------------
-    // 5. Postprocess: 가장 높은 스코어 한 개만
+    // 5. Postprocess (단일)
     // ---------------------------------------------------------
     private fun postprocess(
         logitsTensor: FloatArray,
@@ -215,8 +202,8 @@ class GroundingDinoONNX(private val context: Context) {
 
                 val cx = boxesTensor[i * 4]
                 val cy = boxesTensor[i * 4 + 1]
-                val w  = boxesTensor[i * 4 + 2]
-                val h  = boxesTensor[i * 4 + 3]
+                val w = boxesTensor[i * 4 + 2]
+                val h = boxesTensor[i * 4 + 3]
 
                 val x = cx - w / 2f
                 val y = cy - h / 2f
@@ -228,101 +215,43 @@ class GroundingDinoONNX(private val context: Context) {
         return bestBox
     }
 
-
     // ---------------------------------------------------------
-    // 6. Postprocess: 여러 개 + NMS
+    // ✅ ✅ ✅ 6. 비동기 단일 감지 (핵심)
     // ---------------------------------------------------------
-    private fun postprocessMultiple(
-        logitsTensor: FloatArray,
-        boxesTensor: FloatArray,
-        threshold: Float = 0.5f
-    ): List<Detection> {
-
-        val numQueries = 900
-        val hiddenDim = 256
-        val results = mutableListOf<Detection>()
-
-        for (i in 0 until numQueries) {
-            val score = 1f / (1f + exp(-logitsTensor[i * hiddenDim]))
-            if (score < threshold) continue
-
-            val cx = boxesTensor[i * 4 + 0]
-            val cy = boxesTensor[i * 4 + 1]
-            val w = boxesTensor[i * 4 + 2]
-            val h = boxesTensor[i * 4 + 3]
-
-            val x = cx - w / 2f
-            val y = cy - h / 2f
-
-            results += Detection(
-                label = "person",
-                confidence = score,
-                boundingBox = RectF(x, y, x + w, y + h)
-            )
+    fun detectOneAsync(
+        bitmap: Bitmap,
+        onResult: (RectF?) -> Unit
+    ) {
+        if (!isSessionLoaded || session == null) {
+            android.util.Log.e("DINO", "❌ Session not loaded. Skip inference.")
+            onResult(null)
+            return
         }
 
-        return nms(results, 0.5f)
-    }
+        if (isRunning.get()) return
+        isRunning.set(true)
 
-    // ---------------------------------------------------------
-    // 7. NMS / IoU
-    // ---------------------------------------------------------
-    private fun nms(detections: List<Detection>, iouThreshold: Float): List<Detection> {
-        if (detections.isEmpty()) return emptyList()
+        dinoScope.launch {
 
-        val sorted = detections.sortedByDescending { it.confidence }.toMutableList()
-        val result = mutableListOf<Detection>()
+            val result = try {
+                val pre = preprocess(bitmap)
+                val (logitsTensor, boxesTensor) = runInference(pre)
+                postprocess(logitsTensor, boxesTensor)
+            } catch (e: Exception) {
+                android.util.Log.e("DINO", "❌ Async inference failed", e)
+                null
+            }
 
-        while (sorted.isNotEmpty()) {
-            val best = sorted.removeAt(0)
-            result += best
-
-            val it = sorted.iterator()
-            while (it.hasNext()) {
-                val d = it.next()
-                if (iou(best.boundingBox, d.boundingBox) >= iouThreshold) {
-                    it.remove()
-                }
+            withContext(Dispatchers.Main) {
+                isRunning.set(false)
+                onResult(result)
             }
         }
-
-        return result
     }
 
-    private fun iou(a: RectF, b: RectF): Float {
-        val interLeft = max(a.left, b.left)
-        val interTop = max(a.top, b.top)
-        val interRight = min(a.right, b.right)
-        val interBottom = min(a.bottom, b.bottom)
-
-        val interW = max(0f, interRight - interLeft)
-        val interH = max(0f, interBottom - interTop)
-        val interArea = interW * interH
-        if (interArea <= 0f) return 0f
-
-        val unionArea = a.width() * a.height() + b.width() * b.height() - interArea
-        if (unionArea <= 0f) return 0f
-
-        return interArea / unionArea
-    }
 
     // ---------------------------------------------------------
-    // 8. Public API
+    // ✅ 실행 중 여부 체크
     // ---------------------------------------------------------
-
-    /** 최고 스코어 한 개만 반환 */
-    fun detectOne(bitmap: Bitmap): RectF? {
-        if (!isSessionLoaded) return null
-        val pre = preprocess(bitmap)
-        val (logitsTensor, boxesTensor) = runInference(pre)
-        return postprocess(logitsTensor, boxesTensor)
-    }
-
-    /** 여러 사람 박스 + confidence (필요하면 사용) */
-    fun detectAll(bitmap: Bitmap, threshold: Float = 0.5f): List<Detection> {
-        if (!isSessionLoaded) return emptyList()
-        val pre = preprocess(bitmap)
-        val (logitsTensor, boxesTensor) = runInference(pre)
-        return postprocessMultiple(logitsTensor, boxesTensor, threshold)
-    }
+    fun isBusy(): Boolean = isRunning.get()
 }

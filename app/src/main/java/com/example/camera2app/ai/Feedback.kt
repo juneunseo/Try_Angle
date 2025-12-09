@@ -110,16 +110,18 @@ data class FeedbackItem(
     val progress: Double
         get() {
             if (currentValue == null || targetValue == null) return 0.0
+            val range = tolerance ?: 1.0
             val diff = abs(targetValue - currentValue)
-            val maxDiff = abs(targetValue) + 50.0
-            return max(0.0, min(1.0, 1.0 - (diff / maxDiff)))
+            return max(0.0, min(1.0, 1.0 - (diff / range)))
         }
+
 
     val isCompleted: Boolean
         get() {
             if (currentValue == null || targetValue == null || tolerance == null) return false
             return abs(currentValue - targetValue) <= tolerance
         }
+
 
     val isOvershot: Boolean
         get() {

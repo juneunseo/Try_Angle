@@ -10,33 +10,18 @@ class GroundingDINOCoreML(private val context: Context) {
     private val onnxModel = GroundingDinoONNX(context)
 
     init {
-        Log.d("DINO", "✅ GroundingDINO ONNX Wrapper initialized")
+        Log.d("DINO", "✅ GroundingDINO ONNX Async Wrapper initialized")
     }
 
     /**
-     * 사람 1명 bounding box 반환 (최고 score)
+     * ✅ 사람 1명 비동기 감지 (최고 score)
      */
-    fun detectPerson(bitmap: Bitmap): RectF? {
-        return try {
-            onnxModel.detectOne(bitmap)
-        } catch (e: Exception) {
-            Log.e("DINO", "❌ DINO detectOne 실패", e)
-            null
-        }
-    }
-
-    /**
-     * 여러 사람 bounding box 반환 (NMS 포함)
-     */
-    fun detectAllPersons(
+    fun detectPersonAsync(
         bitmap: Bitmap,
-        threshold: Float = 0.5f
-    ): List<Detection> {
-        return try {
-            onnxModel.detectAll(bitmap, threshold)
-        } catch (e: Exception) {
-            Log.e("DINO", "❌ DINO detectAll 실패", e)
-            emptyList()
+        onResult: (RectF?) -> Unit
+    ) {
+        onnxModel.detectOneAsync(bitmap) { box ->
+            onResult(box)
         }
     }
 }

@@ -6,20 +6,16 @@ import android.util.Log
 import kotlin.math.abs
 
 /**
- * ✅ TryAngle v1.5 — 최종 안정판
- * - 좌표계 정규화 오류 수정 ✅
- * - full-frame bbox 잘못 판정되는 문제 수정 ✅
- * - keypointBonus 현실 기준으로 수정 ✅
- * - 사람 없을 때만 1점 고정 ✅
- * - GateSystem 오염 완전 차단 ✅
+ * ✅ TryAngle v1.6 — 점수 완전 안정판
+ * - 사람 없으면 무조건 1점 ✅
+ * - 사람만 있어도 10점 안 뜸 ✅
+ * - Margin + Center + Keypoint + Gate 가중 점수 ✅
+ * - GateSystem 안전 연결 ✅
  */
 class OnDeviceFeedbackGenerator(
     private val useLegacySystem: Boolean
 ) {
 
-    // =====================================================
-    // ✅ 메인 피드백 + 점수 생성
-    // =====================================================
     fun generateFeedback(
         pose: PoseResult?,
         legacyBBox: RectF?,
@@ -39,7 +35,6 @@ class OnDeviceFeedbackGenerator(
         //--------------------------------------------------------
         var bbox: RectF? = legacyBBox ?: pose?.boundingBox
 
-        // ✅ full-frame 판정 기준 수정
         if (pose != null && bbox != null) {
             val w = bbox.width()
             val h = bbox.height()
@@ -67,7 +62,7 @@ class OnDeviceFeedbackGenerator(
         }
 
         //--------------------------------------------------------
-        // ✅ 3️⃣ ✅ 사람 없음 → 여기서 완전 조기 종료 (GateSystem 절대 안 탐)
+        // ✅ 3️⃣ ✅ 사람 없음 → 즉시 1점 반환
         //--------------------------------------------------------
         if (bbox == null || pose == null) {
             Log.e("TryAngleScore", "❌ No person detected → score = 1")
@@ -86,7 +81,7 @@ class OnDeviceFeedbackGenerator(
         }
 
         //--------------------------------------------------------
-        // ✅ 4️⃣ Raw Score 계산
+        // ✅ 4️⃣ Center / Keypoint 점수 계산
         //--------------------------------------------------------
         val cx = bbox.centerX() / image.width
         val cy = bbox.centerY() / image.height
@@ -94,24 +89,22 @@ class OnDeviceFeedbackGenerator(
         val dx = abs(cx - 0.5f)
         val dy = abs(cy - 0.5f)
 
-        val centerPenalty = (dx + dy) * 1.5f
-        val balancePenalty = (1f - marginInfo!!.balanceScore) * 5f
+        val centerScore = (1f - (dx + dy).coerceIn(0f, 1f))
+        val marginScore = marginInfo!!.balanceScore.coerceIn(0f, 1f)
 
         val visible = pose.keypoints.count { it.second > 0.5f }
-
-        val keypointBonus = when {
+        val keypointScore = when {
             visible > 60 -> 1.0f
-            visible > 40 -> 0.5f
-            else -> 0.0f
+            visible > 40 -> 0.8f
+            visible > 25 -> 0.6f
+            visible > 15 -> 0.4f
+            else -> 0.2f
         }
 
-        val rawScore =
-            10f - (centerPenalty * 10f) - balancePenalty + keypointBonus
-
         //--------------------------------------------------------
-        // ✅ 5️⃣ 임시 Feedback 생성 (GateSystem용)
+        // ✅ 5️⃣ GateSystem 안전 연결
         //--------------------------------------------------------
-        val tempCompression = CompressionInfo(index = rawScore.coerceIn(1f, 10f))
+        val tempCompression = CompressionInfo(index = centerScore)
 
         val tempFeedback = TryAngleFeedback(
             primary = if (primary.isEmpty()) "구도를 조정해 주세요" else primary,
@@ -122,31 +115,43 @@ class OnDeviceFeedbackGenerator(
             processingTime = processingTime,
             isOnDevice = true,
             usedLegacySystem = legacyBBox != null,
-            isPersonDetected = true   // ✅ 여기까지 왔으면 무조건 사람 있음
+            isPersonDetected = true
         )
 
-        //--------------------------------------------------------
-        // ✅ 6️⃣ ✅ 최종 점수 (GateSystem + ×10)
-        //--------------------------------------------------------
-        val finalScore =
-            GateSystem.fromFeedback(tempFeedback).overallScore * 10f
+        val gateScore = try {
+            GateSystem.fromFeedback(tempFeedback)
+                .overallScore
+                .coerceIn(0f, 1f)
+        } catch (e: Exception) {
+            0.4f   // Gate 실패 안전 기본값
+        }
 
         //--------------------------------------------------------
-        // ✅ 디버그 로그
+        // ✅ 6️⃣ ✅ 최종 점수 (가중합 → 1~10)
         //--------------------------------------------------------
-        Log.d(
-            "TryAngleScore",
+        val blendedScore =
+            (0.25f * marginScore) +
+                    (0.25f * centerScore) +
+                    (0.20f * keypointScore) +
+                    (0.30f * gateScore)
+
+        val finalScore =
+            ((blendedScore * 9f) + 1f).coerceIn(1f, 10f)
+
+        //--------------------------------------------------------
+        // ✅ 디버그 로그 (원인 추적 가능)
+        //--------------------------------------------------------
+        Log.e(
+            "FinalScoreDebug",
             """
-            ===== TryAngle Debug =====
-            poseDetected = true
-            bbox = $bbox
-            cx = $cx
-            cy = $cy
-            balance = ${marginInfo.balanceScore}
-            visibleKeypoints = $visible
-            rawScore = $rawScore
-            finalScore(×10) = $finalScore
-            =========================
+            ===== FINAL SCORE DEBUG =====
+            margin = $marginScore
+            center = $centerScore
+            keypoints = $keypointScore
+            gate = $gateScore
+            blended = $blendedScore
+            FINAL = $finalScore
+            =============================
             """.trimIndent()
         )
 
