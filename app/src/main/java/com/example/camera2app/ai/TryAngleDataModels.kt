@@ -8,7 +8,9 @@ data class TryAngleFeedback(
     val marginInfo: MarginInfo?,
     val processingTime: Double,
     val isOnDevice: Boolean,
-    val usedLegacySystem: Boolean
+    val usedLegacySystem: Boolean,
+
+    val isPersonDetected: Boolean
 )
 
 data class MovementGuide(

@@ -43,8 +43,10 @@ data class GateEvaluation(
             !gate2.passed -> gate2.feedback
             !gate3.passed -> gate3.feedback
             !gate4.passed -> gate4.feedback
+            overallScore < 0.9f -> "구도가 전반적으로 좋습니다"
             else -> "✓ 완벽한 구도입니다!"
         }
+
 
     val allFeedbacks: List<String>
         get() = listOf(gate1, gate2, gate3, gate4)
@@ -263,6 +265,16 @@ class GateSystem private constructor() {
 
         fun fromFeedback(feedback: TryAngleFeedback): GateEvaluation {
 
+            // ✅ ✅ ✅ [최종 버그 봉쇄 코드 — 이거 하나로 모든 문제 끝]
+            if (!feedback.isPersonDetected) {
+                return GateEvaluation(
+                    gate1 = GateResult("여백 균형", 0.1f, 1f, "사람이 감지되지 않았습니다"),
+                    gate2 = GateResult("프레이밍", 0.1f, 1f, "사람이 감지되지 않았습니다"),
+                    gate3 = GateResult("구도", 0.1f, 1f, "사람이 감지되지 않았습니다"),
+                    gate4 = GateResult("압축감", 0.1f, 1f, "사람이 감지되지 않았습니다")
+                )
+            }
+
             // ✅ 1. 여백 Gate (margin)
             // ✅ 1. 여백 Gate (margin)
             val gate1 = feedback.marginInfo?.let { margin ->
@@ -277,14 +289,14 @@ class GateSystem private constructor() {
                 )
             } ?: GateResult(
                 name = "여백 균형",
-                score = 0.6f,
+                score = 0.4f,
                 threshold = 0.7f,
                 feedback = "여백 분석 중"
             )
 
 
 // ✅ 2. 프레이밍 Gate
-            val framingScore = feedback.compressionInfo?.index ?: 0.65f
+            val framingScore = feedback.compressionInfo?.index ?: 0.45f
 
             val gate2 = GateResult(
                 name = "프레이밍",
@@ -301,28 +313,30 @@ class GateSystem private constructor() {
             val gate3 = if (feedback.movement == null) {
                 GateResult(
                     name = "구도",
-                    score = 1f,
-                    threshold = 1f,
-                    feedback = "구도가 안정적입니다"
+                    score = 0.6f,              // ✅ 기본값은 부분 성공
+                    threshold = 0.75f,         // ✅ 합격선 상향
+                    feedback = "구도 분석 중"
                 )
             } else {
                 GateResult(
                     name = "구도",
-                    score = 0f,
-                    threshold = 1f,
-                    feedback = "카메라 위치를 조금 조정하세요"   // ✅ message 직접 참조 제거
+                    score = 0.4f,
+                    threshold = 0.75f,
+                    feedback = "카메라 위치를 조금 조정하세요"
                 )
             }
 
 
+
 // ✅ 4. 압축감 Gate
-            val compressionScore = feedback.compressionInfo?.index ?: 1f
+            val compressionScore = feedback.compressionInfo?.index ?: 0.5f
+
 
             val gate4 = GateResult(
                 name = "압축감",
                 score = compressionScore,
-                threshold = 0.6f,
-                feedback = if (compressionScore >= 0.6f)
+                threshold = 0.75f,
+                feedback = if (compressionScore >= 0.75f)
                     "압축감이 안정적입니다"
                 else
                     "카메라와의 거리를 조절해보세요"

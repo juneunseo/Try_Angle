@@ -8,6 +8,7 @@ import android.util.Log
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 
+
 /**
  * TryAngle v1.5 온디바이스 프레임 분석기
  * - RTMPose
@@ -56,11 +57,13 @@ class TryAngleOnDeviceAnalyzer(
     ) {
         val startTime = SystemClock.elapsedRealtime()
 
+        // ✅ ✅ ✅ 네이티브 안전 복사본
+        val safeBitmap = image.copy(Bitmap.Config.ARGB_8888, false)
+
         executor.execute {
 
-            // ✅ 1️⃣ RTMPose
             val poseResult = try {
-                rtmposeRunner.detect(image)
+                rtmposeRunner.detect(safeBitmap)
             } catch (e: Exception) {
                 Log.e("TryAngle", "❌ RTMPose detect failed", e)
                 null
@@ -69,33 +72,31 @@ class TryAngleOnDeviceAnalyzer(
             val processingTime =
                 (SystemClock.elapsedRealtime() - startTime) / 1000.0
 
-            // ✅ 2️⃣ 빠른 피드백 생성 (프리뷰용)
             val fastFeedback = feedbackGenerator.generateFeedback(
                 pose = poseResult,
-                legacyBBox = null,   // ✅ 프리뷰에서는 Legacy/DINO 완전 차단
-                image = image,
+                legacyBBox = null,
+                image = safeBitmap,
                 processingTime = processingTime
             )
 
-            // ✅ 3️⃣ Gate 기반 점수 평가 (✅ 여기서 fastFeedback 사용해야 함)
             val gateEvaluation = GateSystem.fromFeedback(fastFeedback)
 
             val primaryFromV15 =
                 V15FeedbackGenerator.shared.generatePrimaryFeedback(gateEvaluation)
 
-            // ✅ 4️⃣ 최종 피드백 생성
             val finalFeedback = fastFeedback.copy(
-                primary = primaryFromV15
+                primary = primaryFromV15,
+                isPersonDetected = (poseResult != null)
             )
 
+            // ✅ ✅ ✅ 딱 1번만 호출
             callback(finalFeedback)
         }
 
-        // ✅ Legacy는 프리뷰에서는 절대 점수에 영향 안 줌
         if (enableLegacySystem) {
             executor.execute {
                 try {
-                    groundingDino?.detectOne(image)
+                    groundingDino?.detectOne(safeBitmap)
                 } catch (e: Exception) {
                     Log.e("TryAngle", "❌ DINO detect failed", e)
                 }
@@ -163,6 +164,16 @@ class TryAngleOnDeviceAnalyzer(
                 image = image,
                 processingTime = processingTime
             )
+
+
+            val finalScore: Float = if (!feedback.isPersonDetected) {
+                // ✅ 사람 없음 → GateSystem 자체를 타지 않고 강제 1점
+                1.0f
+            } else {
+                val gateEvaluation = GateSystem.fromFeedback(feedback)
+                gateEvaluation.overallScore * 10f
+            }
+
 
             Log.e("TryAngleFlow", "✅ feedback.score = ${feedback.compressionInfo?.index}")
 

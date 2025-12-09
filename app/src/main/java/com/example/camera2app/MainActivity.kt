@@ -24,6 +24,9 @@ import android.content.pm.PackageManager
 import com.example.camera2app.gallery.FeedbackScoreActivity
 import com.example.camera2app.ai.TryAngleOnDeviceAnalyzer
 import com.example.camera2app.ai.GateSystem
+import com.example.camera2app.ai.TryAngleFeedback
+
+
 
 
 
@@ -60,11 +63,19 @@ class MainActivity : AppCompatActivity() {
 
     private var isReferenceMode = false
 
+    private var isAnalyzing = false
+
+
 
 
     companion object {
-        private const val REQUEST_REFERENCE_IMAGE = 2001
+        var aiAnalysisStarted = false
+        val feedbackMap: MutableMap<String, TryAngleFeedback> = mutableMapOf()
+
+        const val REQUEST_REFERENCE_IMAGE = 2001
     }
+
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -193,6 +204,17 @@ class MainActivity : AppCompatActivity() {
                         binding.lastThumbnail.setImageBitmap(bmp)
                         binding.lastThumbnail.visibility = View.VISIBLE
                     }
+
+                    lifecycleScope.launch {
+                        delay(500)
+
+                        if (isReferenceMode.not()) return@launch   // ✅ 레퍼런스 모드 아닐 땐 자동 분석 금지
+                        if (bmp.isRecycled) return@launch
+
+                        processCapturedPhotoV15(bmp, uri)
+                    }
+
+
                 }
             },
             previewContainer = binding.previewContainer
@@ -230,223 +252,101 @@ class MainActivity : AppCompatActivity() {
     // ----------------------------------------------------
     // 촬영 → AI 분석
     // ----------------------------------------------------
-    private fun processCapturedPhoto(bitmap: Bitmap, uri: Uri) {
-
-        if (!isAIInitialized) {
-            Toast.makeText(this, "AI 로딩 중...", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // ✅ 레퍼런스 없으면 URI로 자동 복원
-        if (referenceBitmap == null) {
-            if (referenceUri != null) {
-                referenceBitmap = uriToBitmap(referenceUri!!)
-            }
-        }
-
-        // ✅ 그래도 없으면 막는다
-        if (referenceBitmap == null) {
-            Toast.makeText(this, "레퍼런스를 먼저 설정하세요", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        showLoadingOverlay()
-
-        Thread {
-            try {
-                val bbox = yoloxDetector.detectPerson(bitmap)
-                val refBbox = yoloxDetector.detectPerson(referenceBitmap!!)
-
-                // ✅ 기본값: 실패 기준
-                var finalScore = 0f
-                var finalMessage = "사람 인식 실패"
-
-                if (bbox != null && refBbox != null) {
-
-                    // ✅ ✅ ✅ [성공 분기] → 사람 잡힘 → 안내 메시지 숨김
-                    runOnUiThread {
-                        if (isReferenceMode) {
-                            binding.feedbackMessageContainer.visibility = View.GONE
-                            binding.feedbackStatusContainer.visibility = View.VISIBLE
-
-                            binding.iconPose.setImageResource(R.drawable.ic_select_checked)
-                            binding.iconPosition.setImageResource(R.drawable.ic_select_checked)
-                            binding.iconAngle.setImageResource(R.drawable.ic_select_checked)
-                            binding.iconComposition.setImageResource(R.drawable.ic_select_checked)
-
-                            binding.iconFraming.setImageResource(R.drawable.ic_select_empty)
-                            binding.iconGaze.setImageResource(R.drawable.ic_select_empty)
-                        }
-
-                    }
-
-
-                    val pose1 = poseEstimator.estimatePose(bitmap, bbox)
-                    val pose2 = poseEstimator.estimatePose(referenceBitmap!!, refBbox)
-
-                    if (pose1 != null && pose2 != null) {
-                        finalScore = calculatePoseSimilarity(pose1, pose2)
-                        finalMessage = generateFeedbackMessage(finalScore)
-                    } else {
-                        finalScore = 0f
-                        finalMessage = "포즈 추정 실패"
-
-                        // ✅ ✅ ✅ [포즈 실패 분기] → 메시지 다시 표시
-                        runOnUiThread {
-                            binding.feedbackMessageContainer.visibility = View.VISIBLE
-                            binding.feedbackMessage.text = "포즈를 인식할 수 없습니다"
-                        }
-                    }
-
-                } else {
-                    finalScore = 0f
-                    finalMessage = "사람 인식 실패"
-
-                    // ✅ ✅ ✅ [사람 인식 실패 분기] → 메시지 다시 표시
-                    runOnUiThread {
-                        if (isReferenceMode) {
-                            binding.feedbackMessageContainer.visibility = View.VISIBLE
-                            binding.feedbackMessage.text = "얼굴을 화면에 보여주세요"
-
-                            binding.feedbackStatusContainer.visibility = View.VISIBLE
-
-                            binding.iconPose.setImageResource(R.drawable.ic_select_empty)
-                            binding.iconPosition.setImageResource(R.drawable.ic_select_empty)
-                            binding.iconFraming.setImageResource(R.drawable.ic_select_empty)
-                            binding.iconAngle.setImageResource(R.drawable.ic_select_empty)
-                            binding.iconComposition.setImageResource(R.drawable.ic_select_empty)
-                            binding.iconGaze.setImageResource(R.drawable.ic_select_empty)
-                        }
-                    }
-
-
-                }
-
-                runOnUiThread {
-                    hideLoadingOverlay()
-
-                    val intent = Intent(
-                        this,
-                        FeedbackScoreActivity::class.java
-                    ).apply {
-                        putExtra(
-                            FeedbackScoreActivity.EXTRA_CAPTURED_URI,
-                            uri.toString()
-                        )
-
-                        putExtra(
-                            FeedbackScoreActivity.EXTRA_REFERENCE_URI,
-                            referenceUri?.toString()
-                        )
-
-                        // ✅ 실패면 자동으로 0점 들어감
-                        putExtra(
-                            FeedbackScoreActivity.EXTRA_SCORE,
-                            finalScore
-                        )
-
-                        // ✅ 실패 메시지도 전달
-                        putExtra(
-                            FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
-                            finalMessage
-                        )
-                    }
-
-                    startActivity(intent)
-                }
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-
-                // ✅ ✅ ✅ [분석 중 크래시 예외 분기]
-                runOnUiThread {
-                    hideLoadingOverlay()
-
-                    binding.feedbackMessageContainer.visibility = View.VISIBLE
-                    binding.feedbackMessage.text = "분석 중 오류가 발생했습니다"
-
-                    val intent = Intent(
-                        this,
-                        FeedbackScoreActivity::class.java
-                    ).apply {
-                        putExtra(
-                            FeedbackScoreActivity.EXTRA_CAPTURED_URI,
-                            uri.toString()
-                        )
-                        putExtra(
-                            FeedbackScoreActivity.EXTRA_REFERENCE_URI,
-                            referenceUri?.toString()
-                        )
-                        putExtra(
-                            FeedbackScoreActivity.EXTRA_SCORE,
-                            0f
-                        )
-                        putExtra(
-                            FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
-                            "분석 중 오류 발생"
-                        )
-                    }
-
-                    startActivity(intent)
-                }
-            }
-        }.start()
-    }
 
     private fun processCapturedPhotoV15(bitmap: Bitmap, uri: Uri) {
+        MainActivity.aiAnalysisStarted = true
+
+
+        if (isAnalyzing) return
+        isAnalyzing = true
+
+        if (bitmap.isRecycled) {
+            Toast.makeText(this, "이미지가 손상되었습니다", Toast.LENGTH_SHORT).show()
+            isAnalyzing = false
+            return
+        }
 
         if (!isAIInitialized) {
             Toast.makeText(this, "AI 로딩 중...", Toast.LENGTH_SHORT).show()
+            isAnalyzing = false
             return
         }
 
         showLoadingOverlay()
 
-        // ✅ ✅ ✅ 이제 Thread 직접 쓰지 말고 v1.5 분석기로 통합
-        tryAngleAnalyzer.analyzeFrame(bitmap) { feedback ->
+        try {
+            tryAngleAnalyzer.analyzeFrame(bitmap) { feedback ->
 
-            runOnUiThread {
-                hideLoadingOverlay()
+                // ✅ ✅ ✅ 메인에서 직접 저장 (FeedbackCache 완전 대체)
+                MainActivity.feedbackMap[uri.toString()] = feedback
 
-                // ✅ ✅ ✅ GateSystem 기반 최종 점수 계산
-                val gateEvaluation = GateSystem.fromFeedback(feedback)
+                runOnUiThread {
+                    try {
+                        hideLoadingOverlay()
 
-                val finalScore =
-                    (gateEvaluation.overallScore * 10f).coerceIn(0f, 10f)
+                        val gateEvaluation = try {
+                            GateSystem.fromFeedback(feedback)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            null
+                        }
 
-                val finalMessage = feedback.primary
+                        val finalScore =
+                            if (gateEvaluation == null || feedback.isPersonDetected == false)
+                                1.0f
+                            else
+                                (gateEvaluation.overallScore * 10f).coerceIn(1f, 10f)
 
-                val intent = Intent(
-                    this,
-                    FeedbackScoreActivity::class.java
-                ).apply {
+                        val finalMessage =
+                            feedback.primary ?: "분석 결과를 불러올 수 없습니다"
 
-                    putExtra(
-                        FeedbackScoreActivity.EXTRA_CAPTURED_URI,
-                        uri.toString()
-                    )
+                        val intent = Intent(
+                            this,
+                            FeedbackScoreActivity::class.java
+                        ).apply {
+                            putExtra(
+                                FeedbackScoreActivity.EXTRA_CAPTURED_URI,
+                                uri.toString()
+                            )
+                            putExtra(
+                                FeedbackScoreActivity.EXTRA_REFERENCE_URI,
+                                referenceUri?.toString()   // ✅ null-safe
+                            )
+                            putExtra(
+                                FeedbackScoreActivity.EXTRA_SCORE,
+                                finalScore
+                            )
+                            putExtra(
+                                FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
+                                finalMessage
+                            )
+                        }
 
-                    putExtra(
-                        FeedbackScoreActivity.EXTRA_REFERENCE_URI,
-                        referenceUri?.toString()
-                    )
+                        startActivity(intent)
 
-                    // ✅ ✅ ✅ 이제 여기로 Gate 점수가 들어감
-                    putExtra(
-                        FeedbackScoreActivity.EXTRA_SCORE,
-                        finalScore
-                    )
-
-                    putExtra(
-                        FeedbackScoreActivity.EXTRA_FEEDBACK_MESSAGE,
-                        finalMessage
-                    )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        Toast.makeText(
+                            this,
+                            "분석 처리 중 오류 발생",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } finally {
+                        isAnalyzing = false
+                    }
                 }
-
-                startActivity(intent)
             }
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            hideLoadingOverlay()
+            isAnalyzing = false
         }
     }
+
+
+
+
 
 
     fun showThumbnailInstant(bitmap: Bitmap) {
@@ -604,12 +504,24 @@ class MainActivity : AppCompatActivity() {
 
         // 마지막 썸네일 → 분석
         binding.lastThumbnail.setOnClickListener {
+
             val bmp = lastCapturedBitmap
             val uri = lastCapturedUri
-            if (bmp != null && uri != null) {
-                processCapturedPhotoV15(bmp, uri)   // ✅ v1.5 연결
+
+            if (bmp == null || uri == null) {
+                Toast.makeText(this, "아직 저장되지 않았습니다", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
+
+            if (bmp.isRecycled) {
+                Toast.makeText(this, "이미지가 손상되었습니다", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            processCapturedPhotoV15(bmp, uri)
         }
+
+
 
         // 갤러리
         binding.menuGallery.setOnClickListener {

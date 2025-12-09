@@ -21,6 +21,11 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.camera2app.databinding.ActivityGalleryBinding
 import com.example.camera2app.databinding.ActivityGallerySelectableBinding
 import com.example.camera2app.reference.LikeManager
+import com.example.camera2app.ai.TryAngleFeedback
+import com.example.camera2app.MainActivity
+
+
+
 
 class GalleryActivity : ComponentActivity() {
 
@@ -34,6 +39,9 @@ class GalleryActivity : ComponentActivity() {
     private val requestPerm = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { loadMediaIfGranted() }
+
+
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -91,9 +99,18 @@ class GalleryActivity : ComponentActivity() {
             }
             addItemDecoration(GridSpacingItemDecoration(3, dpToPx(1), false))
 
-            adapter = PhotoSelectableAdapter(photos, selectedPhotos) {
+            adapter = PhotoSelectableAdapter(
+                photos,
+                photos.associateWith { uri ->
+                    MainActivity.feedbackMap[uri.toString()]
+                },
+                selectedPhotos
+            ) {
                 updateBottomMenu()
             }
+
+
+
         }
 
         // ★ 닫기 버튼
@@ -367,6 +384,8 @@ class GalleryActivity : ComponentActivity() {
 
 
     }
+
+
 
     // ---------------------- Utility ----------------------
     private fun dpToPx(dp: Int): Int {

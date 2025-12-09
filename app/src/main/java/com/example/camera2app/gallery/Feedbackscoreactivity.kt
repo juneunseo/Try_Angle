@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import com.bumptech.glide.Glide
 import com.example.camera2app.databinding.ActivityFeedbackScoreBinding
+import java.util.Locale
 
 class FeedbackScoreActivity : ComponentActivity() {
 
@@ -27,31 +28,41 @@ class FeedbackScoreActivity : ComponentActivity() {
         binding = ActivityFeedbackScoreBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Intent에서 데이터 받기
+        // ✅ Intent 데이터 수신
         capturedUri = intent.getStringExtra(EXTRA_CAPTURED_URI)
         referenceUri = intent.getStringExtra(EXTRA_REFERENCE_URI)
         val score = intent.getFloatExtra(EXTRA_SCORE, 8.3f)
         val feedbackMessage = intent.getStringExtra(EXTRA_FEEDBACK_MESSAGE)
-            ?: "카메라 셔터도를 약간 높이면서도,\n#가까운 여러 넓은면 더 괜찮지는 시,\n비슷한 이미지를 얻을 수 있습니다!"
+            ?: "촬영 각도와 구도를 조금 조정해보세요!"
 
-        // 촬영한 사진 표시
-        capturedUri?.let { uri ->
-            Glide.with(this)
-                .load(Uri.parse(uri))
-                .into(binding.imageFull)
+        // ✅ ✅ ✅ Glide 크래시 완전 차단 (내장 리소스만 사용)
+        capturedUri?.let { uriString ->
+            try {
+                val uri = Uri.parse(uriString)
+
+                Glide.with(this)
+                    .load(uri)
+                    .error(android.R.drawable.ic_delete)   // ✅ 내장 리소스 사용
+                    .into(binding.imageFull)
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                binding.imageFull.setImageResource(android.R.drawable.ic_delete)
+            }
+        } ?: run {
+            // ✅ URI 자체가 없을 때도 안전 처리
+            binding.imageFull.setImageResource(android.R.drawable.ic_delete)
         }
 
-        // 점수 표시
-        binding.scoreText.text = String.format("%.1f", score)
+        // ✅ 점수 표시 (Locale 명시)
+        binding.scoreText.text = String.format(Locale.US, "%.1f", score)
 
-
-        // 뒤로가기 버튼
+        // ✅ 뒤로가기
         binding.btnBack.setOnClickListener {
             finish()
         }
 
-        // (i) 정보 버튼 → FeedbackActivity로 이동
-
+        // ✅ (i) 정보 버튼 → 상세 피드백 화면 이동
         binding.btnInfo.setOnClickListener {
             val intent = Intent(this, FeedbackActivity::class.java).apply {
                 putExtra(FeedbackActivity.EXTRA_IMAGE_URI, capturedUri)
@@ -62,10 +73,9 @@ class FeedbackScoreActivity : ComponentActivity() {
             startActivity(intent)
         }
 
-
+        // ✅ 프로그레스 바
         binding.progressComposition.progress = (score * 10).toInt().coerceIn(0, 100)
         binding.progressLighting.progress = (score * 8).toInt().coerceIn(0, 100)
         binding.progressFocus.progress = (score * 6).toInt().coerceIn(0, 100)
-
     }
 }

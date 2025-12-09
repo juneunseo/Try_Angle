@@ -15,6 +15,7 @@ class FeedbackActivity : ComponentActivity() {
         const val EXTRA_SCORE = "extra_score"
         const val EXTRA_FEEDBACK_MESSAGE = "extra_feedback_message"
         const val EXTRA_ANALYSIS_MODE = "ANALYSIS_MODE"
+        const val EXTRA_PERSON_DETECTED = "EXTRA_PERSON_DETECTED"
     }
 
     private lateinit var binding: ActivityPreviewFeedbackTotalBinding
@@ -25,13 +26,15 @@ class FeedbackActivity : ComponentActivity() {
         binding = ActivityPreviewFeedbackTotalBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // ✅ Intent 데이터
+        // ✅ Intent 데이터 수신
         val uriStr = intent.getStringExtra(EXTRA_IMAGE_URI)
         val uri = uriStr?.let { Uri.parse(it) }
 
-        val score = intent.getFloatExtra(EXTRA_SCORE, 1.0f)
+        val score = intent.getFloatExtra(EXTRA_SCORE, 0f)
         val feedbackMessage = intent.getStringExtra(EXTRA_FEEDBACK_MESSAGE) ?: ""
         val mode = intent.getStringExtra(EXTRA_ANALYSIS_MODE) ?: "single"
+        val isPersonDetected =
+            intent.getBooleanExtra(EXTRA_PERSON_DETECTED, false)
 
         // ✅ 이미지 표시
         if (uri != null) {
@@ -40,9 +43,7 @@ class FeedbackActivity : ComponentActivity() {
                 .into(binding.imageFull)
         }
 
-        // ✅ 사람 감지 여부 판단 (AI 규칙 그대로 유지)
-        val isPersonDetected = score > 1.5f
-
+        // ✅ 메인 피드백 표시
         displayFeedback(
             score = score,
             feedbackMessage = feedbackMessage,
@@ -55,7 +56,7 @@ class FeedbackActivity : ComponentActivity() {
             onBackPressedDispatcher.onBackPressed()
         }
 
-        // ✅ 다시 평가받기
+        // ✅ 다시 평가
         binding.btnRetry.setOnClickListener {
             val intent = Intent(this, com.example.camera2app.MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -66,16 +67,15 @@ class FeedbackActivity : ComponentActivity() {
         }
     }
 
-    // =====================================================================
+    // ============================================================
     // ✅ 메인 표시 함수
-    // =====================================================================
+    // ============================================================
     private fun displayFeedback(
         score: Float,
         feedbackMessage: String,
         mode: String,
         isPersonDetected: Boolean
     ) {
-
         binding.photoName.text = "촬영 사진"
         binding.scoreTotalDesc.text = String.format("%.1f / 10", score)
 
@@ -91,13 +91,18 @@ class FeedbackActivity : ComponentActivity() {
 
         } else {
 
-            binding.photoSubtitle.text = getOverallDescriptionReference(score)
-            binding.scoreSummaryDesc.text = getScoreSummaryReference(score)
+            // ✅ 사람 없으면 무조건 차단 메시지
+            binding.photoSubtitle.text =
+                getOverallDescriptionSingle(score, isPersonDetected)
+
+            binding.scoreSummaryDesc.text =
+                getScoreSummarySingle(score, isPersonDetected)
 
             val categoryFeedbacks =
                 generateCategoryFeedbacksSingle(score, isPersonDetected)
 
             applyCategoryFeedbacks(categoryFeedbacks)
+
         }
     }
 
@@ -109,10 +114,9 @@ class FeedbackActivity : ComponentActivity() {
         binding.categoryMoodDesc.text = map["mood"]
     }
 
-    // =====================================================================
-    // ✅ ✅ ✅ 갤러리 단일 사진 모드 (사람 감지 분리 적용)
-    // =====================================================================
-
+    // ============================================================
+    // ✅ 단일 사진 모드 (사람 감지 기반)
+    // ============================================================
     private fun getOverallDescriptionSingle(
         score: Float,
         isPersonDetected: Boolean
@@ -191,10 +195,9 @@ class FeedbackActivity : ComponentActivity() {
         )
     }
 
-    // =====================================================================
-    // ✅ ✅ ✅ 레퍼런스 비교 모드 (기존 유지)
-    // =====================================================================
-
+    // ============================================================
+    // ✅ 레퍼런스 비교 모드
+    // ============================================================
     private fun getOverallDescriptionReference(score: Float): String {
         return when {
             score >= 9.0f -> "완벽한 사진이에요! 🎉"
