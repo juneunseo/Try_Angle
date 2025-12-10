@@ -170,7 +170,7 @@ class MainActivity : AppCompatActivity() {
                 yoloxDetector = YoloXDetector(this)
                 poseEstimator = RTMPoseEstimator(this)
 
-                groundingDino = GroundingDinoONNX(this)
+//                groundingDino = GroundingDinoONNX(this)
                 Log.e("DINO", "✅ Grounding DINO ONNX 초기화 완료")
 
 

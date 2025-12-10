@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.util.Log
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import com.example.camera2app.ai.DepthAnythingONNX
 
 
 /**
@@ -25,7 +26,8 @@ class TryAngleOnDeviceAnalyzer(
     private val rtmposeRunner = RTMPoseRunner(context)
 
     // ✅ Depth
-    private val depthEstimator = DepthEstimator()
+    private val depthONNX = DepthAnythingONNX(context)
+
 
 
 
@@ -107,27 +109,64 @@ class TryAngleOnDeviceAnalyzer(
     // =========================================
     // ✅ 레퍼런스 분석
     // =========================================
-    fun analyzeReference(image: Bitmap): ReferenceAnalysis {
+    fun analyzeReferenceAsync(
+        image: Bitmap,
+        callback: (ReferenceAnalysis) -> Unit
+    ) {
 
         val pose = rtmposeRunner.detect(image)
 
-        val depth = pose?.boundingBox?.let { faceRect ->
-            depthEstimator.estimateDistance(
-                faceRect = faceRect,
-                imageWidth = image.width,
-                zoomFactor = 1.0f
+        // ✅ 포즈 없으면 Depth 없이 바로 반환
+        if (pose?.boundingBox == null) {
+            callback(
+                ReferenceAnalysis(
+                    pose = pose,
+                    depth = null,
+                    timestamp = System.currentTimeMillis()
+                )
             )
+            return
         }
 
+        // ✅ ✅ ✅ DepthAnything 비동기 실행
+        depthONNX.estimateDepthAsync(image) { depthMap ->
 
+            var depthResult: DepthResult? = null
 
-        return ReferenceAnalysis(
-            pose = pose,
-            depth = depth,
-            timestamp = System.currentTimeMillis()
-        )
+            if (depthMap != null) {
+                // ✅ 중앙 픽셀 depth 값 샘플링 (256x256 기준)
+                val centerIndex = (256 * 128) + 128
+                val rawDepth = depthMap[centerIndex]
 
+                Log.e("DEPTH_ONNX", "✅ Reference Depth Value = $rawDepth")
+
+                // ✅ ✅ ✅ DepthResult 형태로 변환 (기존 시스템과 호환)
+                depthResult = DepthResult(
+                    distance = rawDepth,
+                    method = DepthMethod.UNAVAILABLE,
+                    confidence = 0.5f,
+                    isZoomDetected = false,
+                    zoomFactor = null
+                )
+
+            } else {
+                Log.e("DEPTH_ONNX", "❌ Depth Map is null")
+            }
+
+            // ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅ ✅
+            // ✅ 콜백으로 ReferenceAnalysis 반환 (딱 이 방식이 정답)
+            callback(
+                ReferenceAnalysis(
+                    pose = pose,
+                    depth = depthResult,
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+        }
     }
+
+
+
 
     // =========================================
     // ✅ 성능 통계 반환
