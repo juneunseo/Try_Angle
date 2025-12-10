@@ -27,6 +27,8 @@ class TryAngleOnDeviceAnalyzer(
     // ✅ Depth
     private val depthEstimator = DepthEstimator()
 
+
+
     // ✅ Grounding DINO (Legacy)
 
     // ✅ Legacy DINO 비활성화 (현재 구조는 MainActivity에서 Async로만 사용)
@@ -117,11 +119,14 @@ class TryAngleOnDeviceAnalyzer(
             )
         }
 
+
+
         return ReferenceAnalysis(
             pose = pose,
             depth = depth,
             timestamp = System.currentTimeMillis()
         )
+
     }
 
     // =========================================

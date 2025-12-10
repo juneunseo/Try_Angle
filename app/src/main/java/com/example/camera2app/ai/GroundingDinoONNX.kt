@@ -31,7 +31,9 @@ class GroundingDinoONNX(private val context: Context) {
     private val isRunning = AtomicBoolean(false)
 
     // [CLS] person [SEP]
-    private val personTokenIds = longArrayOf(101, 2711, 102)
+    // ✅ GroundingDINO 고정 export 모델용 더미 토큰 (길이 1)
+    private val personTokenIds = longArrayOf(0)
+
 
     var isSessionLoaded: Boolean = false
         private set
@@ -69,28 +71,34 @@ class GroundingDinoONNX(private val context: Context) {
 
         } catch (e: Exception) {
             android.util.Log.e("DINO", "❌ Failed to load Grounding DINO", e)
-
-            // ✅ ✅ ✅ 여기 중요
             session = null
             isSessionLoaded = false
         }
     }
 
     // ---------------------------------------------------------
-    // 2. 전처리 (Bitmap -> FloatArray CHW)
+    // ✅ ✅ ✅ 2. 전처리 (Bitmap → FloatArray CHW) [완전 안전 버전]
     // ---------------------------------------------------------
     private fun preprocess(bitmap: Bitmap): FloatArray {
         val target = inputSize
 
         val scale = target.toFloat() / max(bitmap.width, bitmap.height)
-        val newW = (bitmap.width * scale).toInt()
-        val newH = (bitmap.height * scale).toInt()
+        val newW = (bitmap.width * scale).toInt().coerceAtLeast(target)
+        val newH = (bitmap.height * scale).toInt().coerceAtLeast(target)
 
         val scaled = Bitmap.createScaledBitmap(bitmap, newW, newH, true)
 
-        val offsetX = max(0, (newW - target) / 2)
-        val offsetY = max(0, (newH - target) / 2)
-        val cropped = Bitmap.createBitmap(scaled, offsetX, offsetY, target, target)
+        // ✅ ✅ ✅ 크롭 좌표 완전 안전 처리
+        val safeX = ((newW - target) / 2).coerceIn(0, newW - target)
+        val safeY = ((newH - target) / 2).coerceIn(0, newH - target)
+
+        val cropped = Bitmap.createBitmap(
+            scaled,
+            safeX,
+            safeY,
+            target,
+            target
+        )
 
         val pixels = IntArray(target * target)
         cropped.getPixels(pixels, 0, target, 0, 0, target, target)
@@ -123,11 +131,11 @@ class GroundingDinoONNX(private val context: Context) {
     // ---------------------------------------------------------
     private fun createTextInputs(): Map<String, OnnxTensor> {
         val envLocal = env!!
-        val seqLen = personTokenIds.size
 
-        val inputIds = OnnxTensor.createTensor(envLocal, arrayOf(personTokenIds))
-        val attentionMask = OnnxTensor.createTensor(envLocal, arrayOf(LongArray(seqLen) { 1L }))
-        val tokenTypeIds = OnnxTensor.createTensor(envLocal, arrayOf(LongArray(seqLen) { 0L }))
+        // ✅ 길이 1 고정 (export된 DINO 모델 구조에 맞춤)
+        val inputIds = OnnxTensor.createTensor(envLocal, arrayOf(longArrayOf(0)))
+        val attentionMask = OnnxTensor.createTensor(envLocal, arrayOf(longArrayOf(1)))
+        val tokenTypeIds = OnnxTensor.createTensor(envLocal, arrayOf(longArrayOf(0)))
 
         return mapOf(
             "input_ids" to inputIds,
@@ -135,6 +143,7 @@ class GroundingDinoONNX(private val context: Context) {
             "token_type_ids" to tokenTypeIds
         )
     }
+
 
     // ---------------------------------------------------------
     // 4. 추론
@@ -183,7 +192,7 @@ class GroundingDinoONNX(private val context: Context) {
     }
 
     // ---------------------------------------------------------
-    // 5. Postprocess (단일)
+    // 5. Postprocess
     // ---------------------------------------------------------
     private fun postprocess(
         logitsTensor: FloatArray,
@@ -216,7 +225,7 @@ class GroundingDinoONNX(private val context: Context) {
     }
 
     // ---------------------------------------------------------
-    // ✅ ✅ ✅ 6. 비동기 단일 감지 (핵심)
+    // ✅ ✅ ✅ 6. 비동기 단일 감지
     // ---------------------------------------------------------
     fun detectOneAsync(
         bitmap: Bitmap,
@@ -248,7 +257,6 @@ class GroundingDinoONNX(private val context: Context) {
             }
         }
     }
-
 
     // ---------------------------------------------------------
     // ✅ 실행 중 여부 체크

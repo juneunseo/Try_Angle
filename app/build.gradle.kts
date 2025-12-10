@@ -14,24 +14,38 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+
+        // ✅✅✅ S25 Ultra (arm64-v8a) 설치 필수 조건 ✅✅✅
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
-    // ★ Java/Kotlin 타깃을 17로 '둘 다' 고정
+    // ✅✅✅ 네이티브 라이브러리 충돌 방지 (AGP 8.x 방식) ✅✅✅
+    packaging {
+        jniLibs {
+            pickFirsts += listOf(
+                "lib/**/libonnxruntime.so"
+            )
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        // 필요 시 아래 주석 해제 (구버전 API용 desugaring)
-        // isCoreLibraryDesugaringEnabled = true
     }
+
     kotlinOptions {
         jvmTarget = "17"
     }
-    // Kotlin 2.x 권장 설정
+
     kotlin {
         jvmToolchain(17)
     }
 
-    buildFeatures { viewBinding = true }
+    buildFeatures {
+        viewBinding = true
+    }
 
     buildTypes {
         release {
@@ -44,6 +58,7 @@ android {
     }
 }
 
+
 dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
@@ -52,8 +67,8 @@ dependencies {
     implementation ("com.github.bumptech.glide:glide:4.16.0")
     kapt ("com.github.bumptech.glide:compiler:4.16.0")
 
-    // ONNX Runtime for Android
+    // ✅ ONNX Runtime (정상 버전, 하나만!)
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.3")
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
+
 
 }
