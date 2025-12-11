@@ -1,0 +1,7 @@
+/build
+
+# ONNX 모델 파일 (용량이 커서 Git에서 제외)
+*.ort
+*.onnx
+app/src/main/assets/*.ort
+app/src/main/assets/*.onnx

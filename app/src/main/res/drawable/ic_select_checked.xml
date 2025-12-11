@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20">
+
+    <!-- 회색 원 -->
+    <path
+        android:pathData="M10,1
+                          A9,9 0 1,1 9.99,1Z"
+        android:strokeColor="#5A5A5A"
+        android:strokeWidth="2"
+        android:fillColor="#5A5A5A" />
+
+    <!-- 체크 표시 -->
+    <path
+        android:pathData="M6,10 l2.5,2.5 l5,-5"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF"
+        android:fillColor="@android:color/transparent"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

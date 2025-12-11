@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF">
+
+    <!-- 상단 상태바 영역 -->
+    <View
+        android:id="@+id/topStatusBar"
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:background="#FFFFFF"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- 상단 버튼 바 -->
+    <LinearLayout
+        android:id="@+id/topButtonBar"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="30dp"
+        android:paddingEnd="30dp"
+        android:background="#FFFFFF"
+        app:layout_constraintTop_toBottomOf="@id/topStatusBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- 뒤로가기 버튼 -->
+        <ImageView
+            android:id="@+id/btnBack"
+            android:layout_width="25dp"
+            android:layout_height="25dp"
+            android:src="@drawable/back_gray"/>
+
+        <!-- 타이틀 (중앙) -->
+        <TextView
+            android:id="@+id/titleText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:textSize="20sp"
+            android:textColor="#000000"/>
+
+        <!-- 정보 버튼 -->
+        <ImageView
+            android:id="@+id/btnInfo"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:src="@drawable/info_gray"/>
+
+    </LinearLayout>
+
+    <!-- ViewPager2 -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPager"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toBottomOf="@id/topButtonBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottomIconBar"/>
+
+    <!-- 하단 아이콘 바 -->
+    <LinearLayout
+        android:id="@+id/bottomIconBar"
+        android:layout_width="match_parent"
+        android:layout_height="70dp"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:background="#FFFFFF"
+        app:layout_constraintBottom_toTopOf="@id/bottomNavBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ImageView
+            android:id="@+id/btnShare"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="80dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/upload" />
+
+        <ImageView
+            android:id="@+id/btnFavorite"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="80dp"
+            android:src="@drawable/ic_heart_empty"
+            android:scaleType="fitCenter"/>
+
+        <ImageView
+            android:id="@+id/btnDelete"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/delete" />
+
+    </LinearLayout>
+
+    <!-- 하단 네비게이션 바 영역 -->
+    <View
+        android:id="@+id/bottomNavBar"
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:background="#FFFFFF"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

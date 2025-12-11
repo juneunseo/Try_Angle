@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.Camera2app" parent="Theme.Material3.DayNight.NoActionBar">
+
+        <item name="android:fitsSystemWindows">false</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <!-- ★ 앱 전체 폰트 적용 -->
+        <item name="android:fontFamily">@font/gmarket_sans</item>
+        <item name="fontFamily">@font/gmarket_sans</item>
+    </style>
+
+</resources>

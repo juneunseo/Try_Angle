@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- loading_overlay.xml -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#CC000000"
+    android:clickable="true"
+    android:focusable="true">
+
+    <!-- 중앙 로딩 컨테이너 -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="32dp">
+
+        <!-- 프로그레스바 -->
+        <ProgressBar
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:indeterminateTint="#FFFFFF"/>
+
+        <!-- 로딩 텍스트 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="AI가 분석중..."
+            android:textSize="18sp"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"/>
+
+        <!-- 서브 텍스트 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="잠시만 기다려주세요"
+            android:textSize="14sp"
+            android:textColor="#CCFFFFFF"/>
+
+    </LinearLayout>
+
+</FrameLayout>

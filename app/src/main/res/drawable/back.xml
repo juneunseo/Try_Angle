@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="26dp"
+    android:height="26dp"
+    android:viewportWidth="26"
+    android:viewportHeight="26">
+
+  <!-- 🔷 회색 테두리 원 (채우기 없음) -->
+  <path
+      android:pathData="M13,1
+                          A12,12 0 1,1 13,25
+                          A12,12 0 1,1 13,1Z"
+      android:strokeWidth="2"
+      android:strokeColor="@android:color/white"
+      android:fillColor="@android:color/transparent"
+      android:strokeAlpha="1.0"/>
+
+  <!-- 🔷 회색 화살표 -->
+  <path
+      android:pathData="M14.076,18.325L8.836,13.085L14.076,7.845L15.006,8.776L10.696,13.085L15.006,17.395Z"
+      android:fillColor="@android:color/white"
+      android:fillAlpha="1.0"/>
+</vector>

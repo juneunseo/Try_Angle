@@ -1,0 +1,501 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- ▼ 프리뷰 컨테이너 -->
+    <FrameLayout
+        android:id="@+id/previewContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+
+        <TextureView
+            android:id="@+id/textureView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
+
+
+        <com.example.camera2app.ui.OverlayView
+            android:id="@+id/overlayView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <TextView
+            android:id="@+id/timerCountdownText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:textSize="120sp"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:shadowColor="#000000"
+            android:shadowDx="2"
+            android:shadowDy="2"
+            android:shadowRadius="8"
+            android:visibility="gone"
+            android:elevation="100dp" />
+
+        <View
+            android:id="@+id/blurOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#88000000"
+            android:visibility="gone" />
+
+    </FrameLayout>
+
+    <!-- ▼ 상단 바 -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_gravity="top"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#88000000"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:elevation="8dp">
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <!-- ▼ FPS 라벨 -->
+    <TextView
+        android:id="@+id/fpsText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="64dp"
+        android:padding="6dp"
+        android:text="0.0 FPS"
+        android:textColor="#FFFFFFFF"
+        android:textSize="12sp"
+        android:background="#66000000"
+        android:elevation="8dp" />
+
+    <!-- ▼ 옵션 버튼 (하단 바 위 오른쪽) -->
+    <ImageView
+        android:id="@+id/btnOptions"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:layout_gravity="bottom|end"
+        android:src="@drawable/options"
+        android:padding="6dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="180dp"
+        android:elevation="30dp" />
+
+    <!-- ★ 옵션바 -->
+    <LinearLayout
+        android:id="@+id/optionBar"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="180dp"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingHorizontal="20dp"
+        android:minWidth="370dp"
+        android:maxWidth="490dp"
+        android:background="@drawable/pill_black_translucent_bg"
+        android:elevation="20dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/btnExp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="EXP"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageButton
+                android:id="@+id/btnTimer"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@android:color/transparent"
+                app:srcCompat="@drawable/btn_timer" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/btnRatio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="16:9"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:paddingHorizontal="12dp"
+                android:paddingVertical="8dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageButton
+                android:id="@+id/btnFlash"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@android:color/transparent"
+                android:src="@drawable/ic_flash_off"
+                app:tint="#FFFFFF" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageButton
+                android:id="@+id/btnCloseOption"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@android:color/transparent"
+                app:srcCompat="@drawable/ic_close" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- ▼ UI 박스 (하단바 + 메뉴) -->
+    <LinearLayout
+        android:id="@+id/uiContainer"
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:gravity="bottom"
+        android:elevation="16dp">
+
+        <!-- ▼ 하단 바 -->
+        <LinearLayout
+            android:id="@+id/bottomBar"
+            android:layout_width="match_parent"
+            android:layout_height="100dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="#88000000"
+            android:paddingHorizontal="0dp">
+
+            <!-- 왼쪽 영역 (갤러리 썸네일 자리) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="horizontal"
+                android:gravity="center">
+
+                <ImageView
+                    android:id="@+id/lastThumbnail"
+                    android:layout_width="60dp"
+                    android:layout_height="60dp"
+                    android:scaleType="centerCrop"
+                    android:background="@drawable/thumbnail_round"
+                    android:clipToOutline="true"
+                    android:elevation="24dp"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!-- 중앙 셔터 (완전 중앙으로 오도록 weight=1) -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center">
+
+                <ImageButton
+                    android:id="@+id/btnShutter"
+                    android:layout_width="84dp"
+                    android:layout_height="84dp"
+                    android:background="@android:color/transparent"
+                    app:srcCompat="@drawable/ic_shutter" />
+            </LinearLayout>
+
+            <!-- 오른쪽 영역 -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="horizontal"
+                android:gravity="center">
+
+                <ImageButton
+                    android:id="@+id/btnSwitch"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_marginEnd="0dp"
+                    android:background="@android:color/transparent"
+                    app:srcCompat="@drawable/ic_switch_camera" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+
+
+        <!-- ▼ 하단 메뉴 (여기 있어야 함!) -->
+        <LinearLayout
+            android:id="@+id/bottomMenu"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:gravity="center"
+            android:background="#88000000"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="12dp">
+
+            <TextView
+                android:id="@+id/menuGallery"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="갤러리"
+                android:textColor="#CCCCCC"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/menuCamera"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="카메라"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/menuReference"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="레퍼런스"
+                android:textColor="#CCCCCC"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+
+    <!-- ▼ 촬영 플래시 -->
+    <View
+        android:id="@+id/shutterFlashView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#FFFFFF"
+        android:alpha="0"
+        android:clickable="false" />
+
+    <!-- ▼ 피드백 상태 표시 -->
+    <LinearLayout
+        android:id="@+id/feedbackStatusContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|center_vertical"
+        android:layout_marginStart="16dp"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:background="@drawable/rounded_rect_black_translucent"
+        android:elevation="20dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/statusPose"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="포즈"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <ImageView
+                android:id="@+id/iconPose"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_checked" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/statusPosition"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="인물 위치"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <ImageView
+                android:id="@+id/iconPosition"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_checked" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/statusFraming"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="프레이밍"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <ImageView
+                android:id="@+id/iconFraming"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_empty" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/statusAngle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="카메라 앵글"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <ImageView
+                android:id="@+id/iconAngle"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_checked" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/statusComposition"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="구도"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <ImageView
+                android:id="@+id/iconComposition"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_checked" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/statusGaze"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="시선"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+
+            <ImageView
+                android:id="@+id/iconGaze"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_select_empty" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- ▼ 피드백 메시지 -->
+    <LinearLayout
+        android:id="@+id/feedbackMessageContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="550dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="12dp"
+        android:background="@drawable/pill_black_translucent_bg"
+        android:elevation="20dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/feedbackIcon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_person" />
+
+        <TextView
+            android:id="@+id/feedbackMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="얼굴을 화면에 보여주세요"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp" />
+    </LinearLayout>
+
+</FrameLayout>

@@ -1,0 +1,193 @@
+package com.example.camera2app.reference
+
+import com.example.camera2app.MainActivity
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
+import com.example.camera2app.R
+import com.google.android.material.button.MaterialButton
+import kotlinx.coroutines.*
+import java.io.File
+import java.io.FileOutputStream
+
+class ImageDetailActivity : AppCompatActivity() {
+
+    private lateinit var imageView: ImageView
+    private lateinit var btnSelect: MaterialButton
+    private lateinit var btnBack: ImageView
+    private var loadingView: View? = null
+
+    private var imageResId: Int = 0
+    private var imageUri: Uri? = null
+
+    private val uiScope = MainScope()
+
+    companion object {
+        const val EXTRA_IMAGE_RES_ID = "image_res_id"
+        const val EXTRA_IMAGE_URI = "image_uri"
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_image_detail)
+
+        initViews()
+        loadImage()
+        setupListeners()
+    }
+
+    // -------------------------------
+    // ✅ 뷰 초기화
+    // -------------------------------
+    private fun initViews() {
+        imageView = findViewById(R.id.imageDetail)
+        btnSelect = findViewById(R.id.btnSelectImage)
+        btnBack = findViewById(R.id.btnBack)
+    }
+
+    // -------------------------------
+    // ✅ 로딩 오버레이
+    // -------------------------------
+    private fun createLoadingOverlay() {
+        val inflater = layoutInflater
+        loadingView = inflater.inflate(R.layout.loading_overlay2, null)
+
+        addContentView(
+            loadingView,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+    }
+
+    private fun showLoading() {
+        if (loadingView == null) {
+            createLoadingOverlay()
+        }
+        loadingView?.visibility = View.VISIBLE
+    }
+
+    private fun hideLoading() {
+        loadingView?.visibility = View.GONE
+    }
+
+    // -------------------------------
+    // ✅ 이미지 로드
+    // -------------------------------
+    private fun loadImage() {
+        imageResId = intent.getIntExtra(EXTRA_IMAGE_RES_ID, 0)
+
+        if (imageResId != 0) {
+            imageView.setImageResource(imageResId)
+            return
+        }
+
+        val uriString = intent.getStringExtra(EXTRA_IMAGE_URI)
+        if (uriString != null) {
+            imageUri = Uri.parse(uriString)
+            imageView.setImageURI(imageUri)
+            return
+        }
+
+        Toast.makeText(this, "이미지를 불러올 수 없습니다", Toast.LENGTH_SHORT).show()
+        finish()
+    }
+
+    // -------------------------------
+    // ✅ 버튼 리스너
+    // -------------------------------
+    private fun setupListeners() {
+        btnBack.setOnClickListener { finish() }
+
+        btnSelect.setOnClickListener {
+            showLoading()
+            handleSelectImage()
+        }
+    }
+
+    // -------------------------------
+    // ✅ 레퍼런스 선택 처리 (AI 초기화 없음)
+    // -------------------------------
+    private fun handleSelectImage() {
+        showLoading()
+
+        uiScope.launch(Dispatchers.IO) {
+            try {
+                var finalUri: Uri? = null
+
+                if (imageResId != 0) {
+                    // ✅ 리소스 → Bitmap
+                    val bitmap = BitmapFactory.decodeResource(resources, imageResId)
+
+                    // ✅ 캐시에 파일 저장
+                    val file = File(cacheDir, "ref_${System.currentTimeMillis()}.jpg")
+                    FileOutputStream(file).use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                    }
+
+                    // ✅ FileProvider URI
+                    finalUri = FileProvider.getUriForFile(
+                        this@ImageDetailActivity,
+                        "${packageName}.fileprovider",
+                        file
+                    )
+
+                } else if (imageUri != null) {
+                    finalUri = imageUri
+                }
+
+                if (finalUri == null) {
+                    withContext(Dispatchers.Main) {
+                        hideLoading()
+                        Toast.makeText(
+                            this@ImageDetailActivity,
+                            "이미지 처리 실패",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return@launch
+                }
+
+                // ✅✅✅ 여기부터가 핵심이다
+                val resultIntent = Intent().apply {
+                    data = finalUri   // ✅ MainActivity에서 data?.data 로 받는다
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+
+                withContext(Dispatchers.Main) {
+                    hideLoading()
+
+                    // ✅✅✅ MainActivity를 새로 띄우는 게 아니라 결과만 돌려보낸다
+                    setResult(RESULT_OK, resultIntent)
+                    finish()
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    hideLoading()
+                    Toast.makeText(
+                        this@ImageDetailActivity,
+                        "레퍼런스 전달 실패: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+        uiScope.cancel()
+    }
+}

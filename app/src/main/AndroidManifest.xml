@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 카메라 하드웨어 -->
+    <uses-feature android:name="android.hardware.camera.any" />
+
+    <!-- 카메라 권한 -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Android 13+ 갤러리 접근 -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- Android 12L 이하 갤러리 읽기 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
+    <application
+        android:allowBackup="true"
+        android:largeHeap="true"
+        android:label="TryAngle"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+
+
+    <!-- 런처 액티비티 -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ✅ 갤러리 화면 등록 (추가) -->
+        <activity
+            android:name=".gallery.GalleryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Camera2app" />
+
+
+
+
+        <activity
+            android:name=".gallery.PreviewActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".gallery.FeedbackActivity"
+            android:exported="false" />
+
+        <activity android:name=".reference.ReferenceActivity" />
+
+        <!-- ✅ ImageDetailActivity 추가 -->
+        <activity
+            android:name=".reference.ImageDetailActivity"
+            android:screenOrientation="portrait" />
+
+        <!-- ✅ FileProvider 추가 (이미 있으면 스킵) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <activity android:name=".gallery.FeedbackScoreActivity" />
+
+    </application>
+</manifest>
